@@ -7,6 +7,7 @@
 // Include any custom headers you created in your workspace
 #include "MyBugAlgorithm.h"
 
+
 using namespace amp;
 
 int main(int argc, char** argv) {
@@ -17,7 +18,10 @@ int main(int argc, char** argv) {
 
     // Use WO1 from Exercise 2
     Problem2D problem = HW2::getWorkspace1();
+    problem.print();
 
+    //std::cout << problem.obstacles.size() << std::endl;
+    //LOG(problem.obstacles.size());
     // Use WO1 from Exercise 2
     /*
     Problem2D problem = HW2::getWorkspace2();
@@ -50,7 +54,7 @@ int main(int argc, char** argv) {
         // Visualize the path and environment
         Visualizer::makeFigure(problem, path);
     }
-
+    Visualizer::saveFigures(true, "hw1_figs");
     // Let's get crazy and generate a random environment and test your algorithm
     {
         amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()
@@ -68,7 +72,7 @@ int main(int argc, char** argv) {
     Visualizer::saveFigures(true, "hw2_figs");
 
 
-    HW2::grade(algo, "nonhuman.biologic@myspace.edu", argc, argv);
+    HW2::grade(algo, "amy.heerten@colorado.edu", argc, argv);
     
     /* If you want to reconstruct your bug algorithm object every trial (to reset member variables from scratch or initialize), use this method instead*/
     //HW2::grade<MyBugAlgorithm>("nonhuman.biologic@myspace.edu", argc, argv, constructor_parameter_1, constructor_parameter_2, etc...);

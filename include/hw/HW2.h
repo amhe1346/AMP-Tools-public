@@ -14,14 +14,21 @@ class BugAlgorithm : public PointMotionPlanner2D {
         /// @brief Solve a motion planning problem using a bug algorithm. Create a derived class and override this method
         //virtual amp::Path2D plan(const amp::Problem2D& problem) = 0;
 
+
+
         virtual ~BugAlgorithm() {}
+
 };
+
+    
+
 
 class HW2 {
     public:
         /// @brief Get WO1 described in Exercise 2.
         /// @return Workspace 1
         static amp::Problem2D getWorkspace1();
+
 
         /// @brief Get WO2 described in Exercise 2.
         /// @return Workspace 2

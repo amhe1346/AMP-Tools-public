@@ -1,0 +1,7 @@
+#include <iostream>
+#include <vector>
+#include "tools/Path.h"
+
+
+/// m line 
+path.waypoints.push_back(problem.q_init,problem.q_goal);
