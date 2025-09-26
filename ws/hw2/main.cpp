@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
         // Visualize the path and environment
         Visualizer::makeFigure(problem, path);
     }
-    Visualizer::saveFigures(true, "hw1_figs");
+    Visualizer::saveFigures(true, "hw1_figs", "png");
     // Let's get crazy and generate a random environment and test your algorithm
     {
         amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
         Visualizer::makeFigure(random_prob, path, collision_points);
     }
 
-    Visualizer::saveFigures(true, "hw2_figs");
+    Visualizer::saveFigures(true, "hw2_figs", "png");
 
 
     HW2::grade(algo, "amy.heerten@colorado.edu", argc, argv);

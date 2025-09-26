@@ -74,64 +74,160 @@ amp::ManipulatorState MyManipulator2D::getConfigurationFromIK(const Eigen::Vecto
         state[1] = theta2;
         
     } else if (nLinks() == 3) {
-        // 3-link IK - treat first two links as 2-link, third as orientation
+        // 3-link IK - more precise analytical approach
         double L1 = getLinkLengths()[0];
         double L2 = getLinkLengths()[1];
         double L3 = getLinkLengths()[2];
         
-        // For 3-link, use geometric decomposition
-        // Compute wrist position by backing off from end effector
-        double wrist_x = x - L3 * cos(atan2(y, x));
-        double wrist_y = y - L3 * sin(atan2(y, x));
-        
-        // Solve 2-link problem to wrist
-        double wrist_distance = sqrt(wrist_x*wrist_x + wrist_y*wrist_y);
-        
         state.resize(3);
         
-        if (wrist_distance > L1 + L2) {
-            // Unreachable - point towards target
-            state[0] = atan2(y, x);
+        double distance = sqrt(x*x + y*y);
+        double max_reach = L1 + L2 + L3;
+        double min_reach = fabs(fabs(L1 - L2) - L3);
+        
+        // Check reachability
+        if (distance > max_reach - 1e-6) {
+            // Unreachable - fully extend towards target
+            double target_angle = atan2(y, x);
+            state[0] = target_angle;
             state[1] = 0.0;
             state[2] = 0.0;
             return state;
         }
         
-        if (wrist_distance < fabs(L1 - L2)) {
-            // Too close - fold first two links
-            state[0] = atan2(wrist_y, wrist_x);
-            state[1] = (L1 > L2) ? M_PI : -M_PI;
-            state[2] = 0.0;
+        if (distance < min_reach + 1e-6) {
+            // Target too close - fold manipulator
+            double target_angle = atan2(y, x);
+            state[0] = target_angle;
+            state[1] = M_PI;
+            state[2] = -M_PI;
             return state;
         }
         
-        // Solve for first two joints using 2-link solution
-        double cos_q2 = (wrist_distance*wrist_distance - L1*L1 - L2*L2) / (2*L1*L2);
-        cos_q2 = std::max(-1.0, std::min(1.0, cos_q2));
-        double q2 = acos(cos_q2);
+        // For 3-link manipulator, we need a more sophisticated approach
+        // Method: Parameterize the problem and solve numerically
         
-        double alpha = atan2(wrist_y, wrist_x);
-        double beta = acos((L1*L1 + wrist_distance*wrist_distance - L2*L2) / (2*L1*wrist_distance));
-        beta = std::max(0.0, std::min(M_PI, beta));
-        double q1 = alpha - beta;
+        double target_angle = atan2(y, x);
         
-        state[0] = q1;
-        state[1] = q2;
+        // Try multiple configurations and pick the best one
+        double best_error = 1e6;
+        amp::ManipulatorState best_state(3);
         
-        // Third joint aligns end effector towards original target
-        double cumulative_angle = q1 + q2;
-        double desired_angle = atan2(y, x);
-        state[2] = desired_angle - cumulative_angle;
+        // Strategy 1: Use first two links to get close, third to fine-tune
+        for (int attempt = 0; attempt < 8; attempt++) {
+            amp::ManipulatorState candidate(3);
+            
+            // Try different ways to distribute the reach
+            double reach_ratio = 0.5 + 0.1 * (attempt - 4); // Range from 0.1 to 0.9
+            reach_ratio = std::max(0.1, std::min(0.9, reach_ratio));
+            
+            // Target point for first two links
+            double intermediate_distance = distance * reach_ratio;
+            double intermediate_x = x * reach_ratio;
+            double intermediate_y = y * reach_ratio;
+            
+            // Solve 2-link problem for first two joints
+            if (intermediate_distance > L1 + L2 - 1e-6) {
+                // Extend first two links
+                candidate[0] = atan2(intermediate_y, intermediate_x);
+                candidate[1] = 0.0;
+            } else if (intermediate_distance < fabs(L1 - L2) + 1e-6) {
+                // Fold first two links
+                candidate[0] = atan2(intermediate_y, intermediate_x);
+                candidate[1] = (L1 > L2) ? M_PI : -M_PI;
+            } else {
+                // Normal 2-link solution
+                double cos_theta2 = (intermediate_distance*intermediate_distance - L1*L1 - L2*L2) / (2*L1*L2);
+                cos_theta2 = std::max(-1.0, std::min(1.0, cos_theta2));
+                double theta2 = acos(cos_theta2);
+                
+                double alpha = atan2(intermediate_y, intermediate_x);
+                double beta = atan2(L2*sin(theta2), L1 + L2*cos(theta2));
+                candidate[0] = alpha - beta;
+                candidate[1] = theta2;
+            }
+            
+            // Now compute where the second joint is
+            double second_joint_x = L1 * cos(candidate[0]);
+            double second_joint_y = L1 * sin(candidate[0]);
+            
+            double third_joint_x = second_joint_x + L2 * cos(candidate[0] + candidate[1]);
+            double third_joint_y = second_joint_y + L2 * sin(candidate[0] + candidate[1]);
+            
+            // Vector from third joint to target
+            double dx = x - third_joint_x;
+            double dy = y - third_joint_y;
+            double remaining_distance = sqrt(dx*dx + dy*dy);
+            
+            if (remaining_distance > L3 + 1e-6) {
+                // Cannot reach target from third joint
+                candidate[2] = atan2(dy, dx) - (candidate[0] + candidate[1]);
+            } else if (remaining_distance < 1e-6) {
+                // Already at target
+                candidate[2] = 0.0;
+            } else {
+                // Third link can reach target
+                candidate[2] = atan2(dy, dx) - (candidate[0] + candidate[1]);
+            }
+            
+            // Normalize angles
+            for (int i = 0; i < 3; i++) {
+                while (candidate[i] > M_PI) candidate[i] -= 2*M_PI;
+                while (candidate[i] < -M_PI) candidate[i] += 2*M_PI;
+            }
+            
+            // Compute error
+            Eigen::Vector2d achieved_pos = getEndEffectorLocation(candidate);
+            double error = (Eigen::Vector2d(x, y) - achieved_pos).norm();
+            
+            if (error < best_error) {
+                best_error = error;
+                best_state = candidate;
+            }
+        }
         
-        // Normalize angles to [-π, π]
-        while (state[2] > M_PI) state[2] -= 2*M_PI;
-        while (state[2] < -M_PI) state[2] += 2*M_PI;
+        state = best_state;
         
     } else {
-        // Fallback for other number of links
+        // Fallback for n-link manipulators (n > 3)
         state.setZero(nLinks());
+        
+        // Use a simple heuristic: distribute angles to point towards target
         double target_angle = atan2(y, x);
-        if (nLinks() > 0) state[0] = target_angle;
+        double total_length = 0.0;
+        for (const auto& length : getLinkLengths()) {
+            total_length += length;
+        }
+        
+        double distance = sqrt(x*x + y*y);
+        
+        if (distance > total_length) {
+            // Target unreachable - extend all joints towards target
+            for (int i = 0; i < nLinks(); ++i) {
+                state[i] = target_angle / nLinks();
+            }
+        } else if (distance < 1e-6) {
+            // Target at origin - fold the manipulator
+            for (int i = 1; i < nLinks(); ++i) {
+                state[i] = M_PI / (nLinks() - 1);
+            }
+        } else {
+            // Use a simple strategy: first joint points toward target,
+            // others adjust to reach the correct distance
+            state[0] = target_angle * 0.7; // Primary direction
+            
+            // Distribute remaining angle adjustment among other joints
+            double remaining_angle = target_angle - state[0];
+            for (int i = 1; i < nLinks(); ++i) {
+                state[i] = remaining_angle / (nLinks() - 1) * 0.5;
+            }
+            
+            // Fine-tune based on distance
+            double scale = std::min(1.0, distance / total_length);
+            for (int i = 1; i < nLinks(); ++i) {
+                state[i] *= scale;
+            }
+        }
     }
     
     return state;
