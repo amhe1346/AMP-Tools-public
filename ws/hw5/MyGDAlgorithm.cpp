@@ -115,16 +115,7 @@ amp::Path2D MyGDAlgorithm::plan(const amp::Problem2D& problem) {
             std::cout << "Reached goal at step " << i << " (distance: " << dist_to_goal << ")" << std::endl;
             break;
         }
-        
-        // Print detailed progress every 50 steps
-        if (i % 50 == 0) {
-            std::cout << "Step " << i << ": pos(" << current[0] << ", " << current[1] 
-                      << ") gradient_mag=" << grad_magnitude << " dist_to_goal=" << dist_to_goal << std::endl;
-            std::cout << "  Gradient: (" << gradient[0] << ", " << gradient[1] << ")" << std::endl;
-            std::cout << "  Direction: (" << direction[0] << ", " << direction[1] << ")" << std::endl;
-            std::cout << "  Adaptive eta: " << adaptive_eta << std::endl;
-            std::cout << "  Step: (" << step[0] << ", " << step[1] << ")" << std::endl;
-        }
+       
     }
     
     std::cout << "Path completed with " << path.waypoints.size() << " points" << std::endl;

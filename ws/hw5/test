@@ -1,0 +1,133 @@
+
+    // Use HW2 Workspace 1 for testing
+    Problem2D prob = HW2::getWorkspace1();
+    std::cout << "Using HW2 Workspace 1:" << std::endl;
+    std::cout << "Start: (" << prob.q_init[0] << ", " << prob.q_init[1] << ")" << std::endl;
+    std::cout << "Goal: (" << prob.q_goal[0] << ", " << prob.q_goal[1] << ")" << std::endl;
+    std::cout << "Obstacles: " << prob.obstacles.size() << std::endl;
+    std::cout << "Parameters: d_star=" << variables.d_star 
+              << ", zeta=" << variables.zeta 
+              << ", Q_star=" << variables.Q_star 
+              << ", eta=" << variables.eta << std::endl;
+
+    // Test your gradient descent algorithm using the variables
+    MyGDAlgorithm algo(variables.d_star, variables.zeta, variables.Q_star, variables.eta);
+    Path2D path = algo.plan(prob);
+    
+    // Check if last waypoint is the goal
+    if (path.waypoints.size() > 0) {
+        Eigen::Vector2d last_waypoint = path.waypoints.back();
+        double dist_to_goal = (last_waypoint - prob.q_goal).norm();
+        std::cout << "HW2 WS1 - Last waypoint: (" << last_waypoint[0] << ", " << last_waypoint[1] << ")" << std::endl;
+        std::cout << "HW2 WS1 - Goal: (" << prob.q_goal[0] << ", " << prob.q_goal[1] << ")" << std::endl;
+        std::cout << "HW2 WS1 - Distance to goal: " << dist_to_goal << std::endl;
+        std::cout << "HW2 WS1 - Reaches goal: " << (dist_to_goal < 0.1 ? "YES" : "NO") << std::endl;
+    }
+    
+    // FIGURE 1: HW2 Workspace 1 - Path Planning Result
+    std::cout << "\n=== GENERATING FIGURE 1: HW2 WS1 Path Planning ===" << std::endl;
+    Visualizer::makeFigure(prob, path);
+
+    // FIGURE 2: HW2 Workspace 1 - Vector Field Visualization
+    std::cout << "\n=== GENERATING FIGURE 2: HW2 WS1 Vector Field ===" << std::endl;
+    Visualizer::makeFigure(MyPotentialFunction{prob.q_goal, prob.obstacles, 
+                                              variables.d_star, variables.zeta, 
+                                              variables.Q_star, variables.eta}, prob, 30);
+
+    // Test HW5 Workspace 1
+    Problem2D hw5_prob = HW5::getWorkspace1();
+    std::cout << "\n=== HW5 Workspace 1 ===" << std::endl;
+    std::cout << "Start: (" << hw5_prob.q_init[0] << ", " << hw5_prob.q_init[1] << ")" << std::endl;
+    std::cout << "Goal: (" << hw5_prob.q_goal[0] << ", " << hw5_prob.q_goal[1] << ")" << std::endl;
+    std::cout << "Obstacles: " << hw5_prob.obstacles.size() << std::endl;
+
+    MyGDAlgorithm algo_hw5(variables.d_star, variables.zeta, variables.Q_star, variables.eta);
+    Path2D path_hw5 = algo_hw5.plan(hw5_prob);
+    
+    // Calculate and print path length for figure 3 (HW5 Workspace 1)
+    double path_length_fig3 = 0.0;
+    for (size_t i = 1; i < path_hw5.waypoints.size(); ++i) {
+        path_length_fig3 += (path_hw5.waypoints[i] - path_hw5.waypoints[i-1]).norm();
+    }
+    std::cout << "*** FIGURE 3 PATH LENGTH: " << path_length_fig3 << " ***" << std::endl;
+    
+    // FIGURE 3: HW5 Workspace 1 - Path Planning Result
+    std::cout << "\n=== GENERATING FIGURE 3: HW5 WS1 Path Planning ===" << std::endl;
+    Visualizer::makeFigure(hw5_prob, path_hw5);
+
+    // FIGURE 4: HW5 Workspace 1 - Vector Field Visualization
+    std::cout << "\n=== GENERATING FIGURE 4: HW5 WS1 Vector Field ===" << std::endl;
+    Visualizer::makeFigure(MyPotentialFunction{hw5_prob.q_goal, hw5_prob.obstacles, 
+                                              variables.d_star, variables.zeta, 
+                                              variables.Q_star, variables.eta}, hw5_prob, 30);
+
+    // Test HW2 Workspace 2
+    Problem2D hw2_ws2_prob = HW2::getWorkspace2();
+    std::cout << "\n=== HW2 Workspace 2 ===" << std::endl;
+    std::cout << "Start: (" << hw2_ws2_prob.q_init[0] << ", " << hw2_ws2_prob.q_init[1] << ")" << std::endl;
+    std::cout << "Goal: (" << hw2_ws2_prob.q_goal[0] << ", " << hw2_ws2_prob.q_goal[1] << ")" << std::endl;
+    std::cout << "Obstacles: " << hw2_ws2_prob.obstacles.size() << std::endl;
+
+    MyGDAlgorithm algo_hw2_ws2(variables.d_star, variables.zeta, variables.Q_star, variables.eta);
+    Path2D path_hw2_ws2 = algo_hw2_ws2.plan(hw2_ws2_prob);
+    
+    // Check if last waypoint is the goal
+    if (path_hw2_ws2.waypoints.size() > 0) {
+        Eigen::Vector2d last_waypoint = path_hw2_ws2.waypoints.back();
+        double dist_to_goal = (last_waypoint - hw2_ws2_prob.q_goal).norm();
+        std::cout << "HW2 WS2 - Last waypoint: (" << last_waypoint[0] << ", " << last_waypoint[1] << ")" << std::endl;
+        std::cout << "HW2 WS2 - Goal: (" << hw2_ws2_prob.q_goal[0] << ", " << hw2_ws2_prob.q_goal[1] << ")" << std::endl;
+        std::cout << "HW2 WS2 - Distance to goal: " << dist_to_goal << std::endl;
+        std::cout << "HW2 WS2 - Reaches goal: " << (dist_to_goal < 0.1 ? "YES" : "NO") << std::endl;
+    }
+    
+    // FIGURE 5: HW2 Workspace 2 - Path Planning Result
+    std::cout << "\n=== GENERATING FIGURE 5: HW2 WS2 Path Planning ===" << std::endl;
+    Visualizer::makeFigure(hw2_ws2_prob, path_hw2_ws2);
+
+    // FIGURE 6: HW2 Workspace 2 - Vector Field Visualization
+    std::cout << "\n=== GENERATING FIGURE 6: HW2 WS2 Vector Field ===" << std::endl;
+    Visualizer::makeFigure(MyPotentialFunction{hw2_ws2_prob.q_goal, hw2_ws2_prob.obstacles, 
+                                              variables.d_star, variables.zeta, 
+                                              variables.Q_star, variables.eta}, hw2_ws2_prob, 30);
+
+    // Test HW2 Workspace 2 with standard parameters
+    Problem2D hw2_ws2_standard_prob = HW2::getWorkspace2();  // HW2 workspace 2 with standard parameters
+    std::cout << "\n=== HW2 Workspace 2 (Standard Parameters) ===" << std::endl;
+    std::cout << "Start: (" << hw2_ws2_standard_prob.q_init[0] << ", " << hw2_ws2_standard_prob.q_init[1] << ")" << std::endl;
+    std::cout << "Goal: (" << hw2_ws2_standard_prob.q_goal[0] << ", " << hw2_ws2_standard_prob.q_goal[1] << ")" << std::endl;
+    std::cout << "Obstacles: " << hw2_ws2_standard_prob.obstacles.size() << std::endl;
+    std::cout << "Standard Parameters: d_star=" << variables.d_star 
+              << ", zeta=" << variables.zeta 
+              << ", Q_star=" << variables.Q_star 
+              << ", eta=" << variables.eta << std::endl;
+
+    MyGDAlgorithm algo_hw2_ws2_standard(variables.d_star, variables.zeta, 
+                                        variables.Q_star, variables.eta);
+    Path2D path_hw2_ws2_standard = algo_hw2_ws2_standard.plan(hw2_ws2_standard_prob);
+    
+    // Calculate and print path length for HW2 WS2 standard test
+    double path_length_hw2_ws2_standard = 0.0;
+    for (size_t i = 1; i < path_hw2_ws2_standard.waypoints.size(); ++i) {
+        path_length_hw2_ws2_standard += (path_hw2_ws2_standard.waypoints[i] - path_hw2_ws2_standard.waypoints[i-1]).norm();
+    }
+    std::cout << "*** HW2 WS2 STANDARD PATH LENGTH: " << path_length_hw2_ws2_standard << " ***" << std::endl;
+    
+    // FIGURE 7: HW2 WS2 Standard Parameters - Path Planning Result
+    std::cout << "\n=== GENERATING FIGURE 7: HW2 WS2 Standard Parameters Path Planning ===" << std::endl;
+    Visualizer::makeFigure(hw2_ws2_standard_prob, path_hw2_ws2_standard);
+
+    // FIGURE 8: HW2 WS2 Standard Parameters - Vector Field Visualization
+    std::cout << "\n=== GENERATING FIGURE 8: HW2 WS2 Standard Parameters Vector Field ===" << std::endl;
+    Visualizer::makeFigure(MyPotentialFunction{hw2_ws2_standard_prob.q_goal, hw2_ws2_standard_prob.obstacles, 
+                                              variables.d_star, variables.zeta, 
+                                              variables.Q_star, variables.eta}, hw2_ws2_standard_prob, 30);
+    
+    // ==============================================
+    // ENHANCED ALGORITHM TESTS ON ALL WORKSPACES
+    // ==============================================
+    
+    std::cout << "\n" << std::string(70, '=') << std::endl;
+    std::cout << "TESTING ENHANCED ALGORITHM WITH TANGENTIAL FLOW ON ALL WORKSPACES" << std::endl;
+    std::cout << std::string(70, '=') << std::endl;
+    
