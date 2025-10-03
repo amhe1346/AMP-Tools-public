@@ -20,7 +20,8 @@ int main(int argc, char** argv) {
         double zeta;    // Attractive potential gain  
         double Q_star;  // Repulsive potential gain
         double eta;     // Step size
-    } variables = {.5, 10.0, 5.0, 0.05};  // Balanced forces: smaller d_star, higher zeta, moderate Q_star
+        //hw 2 {.5, 10.0, 5.0, 0.05};
+    } variables = {.5, 10.0, 15.0, 0.05};  // Balanced forces: smaller d_star, higher zeta, moderate Q_star
 
     // Use HW2 Workspace 1 for testing
     Problem2D prob = HW2::getWorkspace1();
@@ -44,6 +45,42 @@ int main(int argc, char** argv) {
     Visualizer::makeFigure(MyPotentialFunction{prob.q_goal, prob.obstacles, 
                                               variables.d_star, variables.zeta, 
                                               variables.Q_star, variables.eta}, prob, 30);
+
+    // Test HW5 Workspace 1
+    Problem2D hw5_prob = HW5::getWorkspace1();
+    std::cout << "\n=== HW5 Workspace 1 ===" << std::endl;
+    std::cout << "Start: (" << hw5_prob.q_init[0] << ", " << hw5_prob.q_init[1] << ")" << std::endl;
+    std::cout << "Goal: (" << hw5_prob.q_goal[0] << ", " << hw5_prob.q_goal[1] << ")" << std::endl;
+    std::cout << "Obstacles: " << hw5_prob.obstacles.size() << std::endl;
+
+    MyGDAlgorithm algo_hw5(variables.d_star, variables.zeta, variables.Q_star, variables.eta);
+    Path2D path_hw5 = algo_hw5.plan(hw5_prob);
+    
+    // Visualize HW5 workspace problem and solution path
+    Visualizer::makeFigure(hw5_prob, path_hw5);
+
+    // Visualize HW5 workspace 2D vector field
+    Visualizer::makeFigure(MyPotentialFunction{hw5_prob.q_goal, hw5_prob.obstacles, 
+                                              variables.d_star, variables.zeta, 
+                                              variables.Q_star, variables.eta}, hw5_prob, 30);
+
+    // Test HW2 Workspace 2
+    Problem2D hw2_ws2_prob = HW2::getWorkspace2();
+    std::cout << "\n=== HW2 Workspace 2 ===" << std::endl;
+    std::cout << "Start: (" << hw2_ws2_prob.q_init[0] << ", " << hw2_ws2_prob.q_init[1] << ")" << std::endl;
+    std::cout << "Goal: (" << hw2_ws2_prob.q_goal[0] << ", " << hw2_ws2_prob.q_goal[1] << ")" << std::endl;
+    std::cout << "Obstacles: " << hw2_ws2_prob.obstacles.size() << std::endl;
+
+    MyGDAlgorithm algo_hw2_ws2(variables.d_star, variables.zeta, variables.Q_star, variables.eta);
+    Path2D path_hw2_ws2 = algo_hw2_ws2.plan(hw2_ws2_prob);
+    
+    // Visualize HW2 workspace 2 problem and solution path
+    Visualizer::makeFigure(hw2_ws2_prob, path_hw2_ws2);
+
+    // Visualize HW2 workspace 2 2D vector field
+    Visualizer::makeFigure(MyPotentialFunction{hw2_ws2_prob.q_goal, hw2_ws2_prob.obstacles, 
+                                              variables.d_star, variables.zeta, 
+                                              variables.Q_star, variables.eta}, hw2_ws2_prob, 30);
     
     Visualizer::saveFigures(true, "hw5_figs");
     
