@@ -1,13 +1,38 @@
+#include <Eigen/Dense>
+#include <vector>
+
+
 #include "MyCSConstructors.h"
+#include <Eigen/Dense>
+#include <queue>
+// Local point-in-polygon test for Eigen::Vector2d and std::vector<Eigen::Vector2d>
+bool pointInPolygon(const Eigen::Vector2d& pt, const std::vector<Eigen::Vector2d>& poly) {
+    int n = poly.size();
+    bool inside = false;
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+        double xi = poly[i].x(), yi = poly[i].y();
+        double xj = poly[j].x(), yj = poly[j].y();
+        if (((yi > pt.y()) != (yj > pt.y())) &&
+            (pt.x() < (xj - xi) * (pt.y() - yi) / (yj - yi + 1e-12) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
 
 ////////////////////// THIS IS FROM HW4 //////////////////////
 
 /* You can just move these classes to shared folder and include them instead of copying them to hw6 project*/
 
 std::pair<std::size_t, std::size_t> MyGridCSpace2D::getCellFromPoint(double x0, double x1) const {
-    // Implment your discretization procedure here, such that the point (x0, x1) lies within the returned cell
-    std::size_t cell_x = 0; // x index of cell
-    std::size_t cell_y = 0; // x index of cell
+    // Map (x0, x1) to grid cell indices, clamped to grid bounds
+    std::size_t cell_x = 0, cell_y = 0;
+    if (m_x_max > m_x_min && m_y_max > m_y_min && m_x_cells > 0 && m_y_cells > 0) {
+        double x_step = (m_x_max - m_x_min) / m_x_cells;
+        double y_step = (m_y_max - m_y_min) / m_y_cells;
+        cell_x = std::min(m_x_cells - 1, std::max(std::size_t(0), std::size_t((x0 - m_x_min) / x_step)));
+        cell_y = std::min(m_y_cells - 1, std::max(std::size_t(0), std::size_t((x1 - m_y_min) / y_step)));
+    }
     return {cell_x, cell_y};
 }
 
@@ -19,14 +44,20 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
     // In order to use the pointer as a regular GridCSpace2D object, we can just create a reference
     MyGridCSpace2D& cspace = *cspace_ptr;
     std::cout << "Constructing C-space for manipulator" << std::endl;
-    // Determine if each cell is in collision or not, and store the values the cspace. This `()` operator comes from DenseArray base class
-    cspace(1, 3) = true;
-    cspace(3, 3) = true;
-    cspace(0, 1) = true;
-    cspace(1, 0) = true;
-    cspace(2, 0) = true;
-    cspace(3, 0) = true;
-    cspace(4, 1) = true;
+    // Mark cells as obstacles if their center is inside any workspace obstacle
+    for (std::size_t ix = 0; ix < cspace.m_x_cells; ++ix) {
+        for (std::size_t iy = 0; iy < cspace.m_y_cells; ++iy) {
+            double x = cspace.m_x_min + (ix + 0.5) * (cspace.m_x_max - cspace.m_x_min) / cspace.m_x_cells;
+            double y = cspace.m_y_min + (iy + 0.5) * (cspace.m_y_max - cspace.m_y_min) / cspace.m_y_cells;
+            Eigen::Vector2d cell_center(x, y);
+            for (const auto& obs : env.obstacles) {
+                if (pointInPolygon(cell_center, obs.verticesCCW())) {
+                    cspace(ix, iy) = true;
+                    break;
+                }
+            }
+        }
+    }
 
     // Returning the object of type std::unique_ptr<MyGridCSpace2D> can automatically cast it to a polymorphic base-class pointer of type std::unique_ptr<amp::GridCSpace2D>.
     // The reason why this works is not super important for our purposes, but if you are curious, look up polymorphism!
@@ -43,16 +74,20 @@ std::unique_ptr<amp::GridCSpace2D> MyPointAgentCSConstructor::construct(const am
     // In order to use the pointer as a regular GridCSpace2D object, we can just create a reference
     MyGridCSpace2D& cspace = *cspace_ptr;
     std::cout << "Constructing C-space for point agent" << std::endl;
-    // Determine if each cell is in collision or not, and store the values the cspace. This `()` operator comes from DenseArray base class
-    cspace(0, 0) = true;
-    cspace(1, 1) = true;
-    cspace(2, 2) = true;
-    cspace(3, 3) = true;
-    cspace(4, 4) = true;
-    cspace(0, 4) = true;
-    cspace(1, 3) = true;
-    cspace(3, 1) = true;
-    cspace(4, 0) = true;
+    // Mark cells as obstacles if their center is inside any workspace obstacle
+    for (std::size_t ix = 0; ix < cspace.m_x_cells; ++ix) {
+        for (std::size_t iy = 0; iy < cspace.m_y_cells; ++iy) {
+            double x = cspace.m_x_min + (ix + 0.5) * (cspace.m_x_max - cspace.m_x_min) / cspace.m_x_cells;
+            double y = cspace.m_y_min + (iy + 0.5) * (cspace.m_y_max - cspace.m_y_min) / cspace.m_y_cells;
+            Eigen::Vector2d cell_center(x, y);
+            for (const auto& obs : env.obstacles) {
+                if (pointInPolygon(cell_center, obs.verticesCCW())) {
+                    cspace(ix, iy) = true;
+                    break;
+                }
+            }
+        }
+    }
 
     // Returning the object of type std::unique_ptr<MyGridCSpace2D> can automatically cast it to a polymorphic base-class pointer of type std::unique_ptr<amp::GridCSpace2D>.
     // The reason why this works is not super important for our purposes, but if you are curious, look up polymorphism!
@@ -60,10 +95,74 @@ std::unique_ptr<amp::GridCSpace2D> MyPointAgentCSConstructor::construct(const am
 }
 
 amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, const Eigen::Vector2d& q_goal, const amp::GridCSpace2D& grid_cspace, bool isManipulator) {
-    // Implement your WaveFront algorithm here
+    // Full WaveFront grid-based BFS implementation
+    using Cell = std::pair<std::size_t, std::size_t>;
+    // Cast to MyGridCSpace2D to access member variables
+    const MyGridCSpace2D& my_grid = static_cast<const MyGridCSpace2D&>(grid_cspace);
+    std::size_t nx = my_grid.m_x_cells;
+    std::size_t ny = my_grid.m_y_cells;
+    std::vector<std::vector<int>> wave(nx, std::vector<int>(ny, -1));
+    std::vector<std::vector<Cell>> parent(nx, std::vector<Cell>(ny, Cell{nx, ny}));
+
+    // Get start and goal cell indices
+    Cell start_cell = my_grid.getCellFromPoint(q_init.x(), q_init.y());
+    Cell goal_cell = my_grid.getCellFromPoint(q_goal.x(), q_goal.y());
+
+    // Mark obstacles in wave grid
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) {
+            if (my_grid(ix, iy)) {
+                wave[ix][iy] = -2; // obstacle
+            }
+        }
+    }
+
+    // BFS from goal
+    std::queue<Cell> q;
+    wave[goal_cell.first][goal_cell.second] = 1;
+    q.push(goal_cell);
+    std::vector<Cell> moves = {{1,0},{-1,0},{0,1},{0,-1}};
+    while (!q.empty()) {
+        Cell curr = q.front(); q.pop();
+        int curr_wave = wave[curr.first][curr.second];
+        for (const auto& m : moves) {
+            std::size_t nx_cell = curr.first + m.first;
+            std::size_t ny_cell = curr.second + m.second;
+            if (nx_cell < nx && ny_cell < ny && wave[nx_cell][ny_cell] == -1) {
+                wave[nx_cell][ny_cell] = curr_wave + 1;
+                parent[nx_cell][ny_cell] = curr;
+                q.push({nx_cell, ny_cell});
+            }
+        }
+    }
+
+    // Trace path from start to goal
     amp::Path2D path;
-    path.waypoints.push_back(q_init);
-    path.waypoints.push_back(q_goal);
+    Cell curr = start_cell;
+    if (wave[curr.first][curr.second] < 0) {
+        // No path found
+        return path;
+    }
+    std::vector<Cell> cell_path;
+    while (curr != goal_cell) {
+        cell_path.push_back(curr);
+        curr = parent[curr.first][curr.second];
+        if (curr.first == nx && curr.second == ny) break; // No parent
+    }
+    cell_path.push_back(goal_cell);
+
+    // Calculate cell center manually
+    double x_min = my_grid.m_x_min;
+    double x_max = my_grid.m_x_max;
+    double y_min = my_grid.m_y_min;
+    double y_max = my_grid.m_y_max;
+    double x_step = (x_max - x_min) / nx;
+    double y_step = (y_max - y_min) / ny;
+    for (auto it = cell_path.rbegin(); it != cell_path.rend(); ++it) {
+        double x = x_min + (it->first + 0.5) * x_step;
+        double y = y_min + (it->second + 0.5) * y_step;
+        path.waypoints.push_back(Eigen::Vector2d(x, y));
+    }
     if (isManipulator) {
         Eigen::Vector2d bounds0 = Eigen::Vector2d(0.0, 0.0);
         Eigen::Vector2d bounds1 = Eigen::Vector2d(2*M_PI, 2*M_PI);
