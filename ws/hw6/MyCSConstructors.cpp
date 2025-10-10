@@ -40,21 +40,59 @@ std::pair<std::size_t, std::size_t> MyGridCSpace2D::getCellFromPoint(double x0, 
 std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const amp::LinkManipulator2D& manipulator, const amp::Environment2D& env) {
     // Create an object of my custom cspace type (e.g. MyGridCSpace2D) and store it in a unique pointer. 
     // Pass the constructor parameters to std::make_unique()
-    std::unique_ptr<MyGridCSpace2D> cspace_ptr = std::make_unique<MyGridCSpace2D>(m_cells_per_dim, m_cells_per_dim, env.x_min, env.x_max, env.y_min, env.y_max);
+    // Use joint limits [0, 2*pi] for both dimensions
+    double joint_min = 0.0;
+    double joint_max = 2 * M_PI;
+    std::unique_ptr<MyGridCSpace2D> cspace_ptr = std::make_unique<MyGridCSpace2D>(m_cells_per_dim, m_cells_per_dim, joint_min, joint_max, joint_min, joint_max);
     // In order to use the pointer as a regular GridCSpace2D object, we can just create a reference
     MyGridCSpace2D& cspace = *cspace_ptr;
     std::cout << "Constructing C-space for manipulator" << std::endl;
-    // Mark cells as obstacles if their center is inside any workspace obstacle
+    // Mark cells as obstacles if any manipulator link collides with any workspace obstacle
     for (std::size_t ix = 0; ix < cspace.m_x_cells; ++ix) {
         for (std::size_t iy = 0; iy < cspace.m_y_cells; ++iy) {
-            double x = cspace.m_x_min + (ix + 0.5) * (cspace.m_x_max - cspace.m_x_min) / cspace.m_x_cells;
-            double y = cspace.m_y_min + (iy + 0.5) * (cspace.m_y_max - cspace.m_y_min) / cspace.m_y_cells;
-            Eigen::Vector2d cell_center(x, y);
-            for (const auto& obs : env.obstacles) {
-                if (pointInPolygon(cell_center, obs.verticesCCW())) {
-                    cspace(ix, iy) = true;
-                    break;
+            double theta1 = cspace.m_x_min + (ix + 0.5) * (cspace.m_x_max - cspace.m_x_min) / cspace.m_x_cells;
+            double theta2 = cspace.m_y_min + (iy + 0.5) * (cspace.m_y_max - cspace.m_y_min) / cspace.m_y_cells;
+            amp::ManipulatorState state(2);
+            state[0] = theta1;
+            state[1] = theta2;
+            bool collision = false;
+            // For each link, check if it collides with any obstacle
+            for (std::size_t link = 0; link < manipulator.nLinks(); ++link) {
+                Eigen::Vector2d joint_start = manipulator.getJointLocation(state, link);
+                Eigen::Vector2d joint_end = manipulator.getJointLocation(state, link + 1);
+                // Check for collision with each obstacle
+                for (const auto& obs : env.obstacles) {
+                    const auto& vertices = obs.verticesCCW();
+                    // Check if either joint is inside the obstacle
+                    if (pointInPolygon(joint_start, vertices) || pointInPolygon(joint_end, vertices)) {
+                        collision = true;
+                        break;
+                    }
+                    // Check if the link segment intersects any edge of the obstacle
+                    for (size_t v = 0; v < vertices.size(); ++v) {
+                        Eigen::Vector2d v1 = vertices[v];
+                        Eigen::Vector2d v2 = vertices[(v + 1) % vertices.size()];
+                        // Simple segment intersection test
+                        auto cross = [](const Eigen::Vector2d& a, const Eigen::Vector2d& b) {
+                            return a.x() * b.y() - a.y() * b.x();
+                        };
+                        Eigen::Vector2d r = joint_end - joint_start;
+                        Eigen::Vector2d s = v2 - v1;
+                        Eigen::Vector2d diff = v1 - joint_start;
+                        double denom = cross(r, s);
+                        double t = cross(diff, s) / (denom + 1e-12);
+                        double u = cross(diff, r) / (denom + 1e-12);
+                        if (fabs(denom) > 1e-8 && t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                            collision = true;
+                            break;
+                        }
+                    }
+                    if (collision) break;
                 }
+                if (collision) break;
+            }
+            if (collision) {
+                cspace(ix, iy) = true;
             }
         }
     }
@@ -158,12 +196,31 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
     double y_max = my_grid.m_y_max;
     double x_step = (x_max - x_min) / nx;
     double y_step = (y_max - y_min) / ny;
-    for (auto it = cell_path.rbegin(); it != cell_path.rend(); ++it) {
+    for (auto it = cell_path.begin(); it != cell_path.end(); ++it) {
         double x = x_min + (it->first + 0.5) * x_step;
         double y = y_min + (it->second + 0.5) * y_step;
         path.waypoints.push_back(Eigen::Vector2d(x, y));
     }
+    // Ensure path starts with q_init and ends with q_goal
+    if (path.waypoints.size() > 0) {
+        path.waypoints.front() = q_init;
+        path.waypoints.back() = q_goal;
+    }
+    
+    if (path.waypoints.size() > 0) {
+        std::cout << "[DEBUG] First waypoint: [" << path.waypoints.front().transpose() << "]\n";
+        std::cout << "[DEBUG] Last waypoint:  [" << path.waypoints.back().transpose() << "]\n";
+        std::cout << "[DEBUG] q_init:         [" << q_init.transpose() << "]\n";
+        std::cout << "[DEBUG] q_goal:         [" << q_goal.transpose() << "]\n";
+    }
     if (isManipulator) {
+        // Wrap negative joint values to [0, 2*pi]
+        double two_pi = 2.0 * M_PI;
+        for (auto& wp : path.waypoints) {
+            for (int i = 0; i < wp.size(); ++i) {
+                if (wp[i] < 0) wp[i] += two_pi;
+            }
+        }
         Eigen::Vector2d bounds0 = Eigen::Vector2d(0.0, 0.0);
         Eigen::Vector2d bounds1 = Eigen::Vector2d(2*M_PI, 2*M_PI);
         amp::unwrapWaypoints(path.waypoints, bounds0, bounds1);
