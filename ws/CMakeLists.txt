@@ -17,8 +17,15 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/shared")
 endif()
 
 foreach(SUBDIR ${HW_SUBDIRECTORIES})
-    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${SUBDIR} AND NOT SUBDIR STREQUAL "shared" AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUBDIR}/IGNORE")
+    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${SUBDIR}
+        AND NOT SUBDIR STREQUAL "shared"
+        AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUBDIR}/IGNORE"
+        AND NOT SUBDIR STREQUAL "hw7/benchmark")
         file(GLOB_RECURSE USER_SOURCES "${SUBDIR}/*.cpp")
+        # Remove benchmark sources from USER_SOURCES if SUBDIR is hw7
+        if(SUBDIR STREQUAL "hw7")
+            list(FILTER USER_SOURCES EXCLUDE REGEX ".*hw7/benchmark/.*\\.cpp$")
+        endif()
         set(TARGET_NAME "main-${SUBDIR}")
         add_executable(${TARGET_NAME} ${USER_SOURCES})
         target_link_libraries(${TARGET_NAME} PRIVATE
@@ -47,6 +54,9 @@ foreach(SUBDIR ${HW_SUBDIRECTORIES})
             message("Building ${TARGET_NAME} without logs")
             target_compile_definitions(${TARGET_NAME} PRIVATE AMP_EXCLUDE_LOGS)
         endif()
+
     endif()
 endforeach()
+
+add_subdirectory(hw7/benchmark)
 
