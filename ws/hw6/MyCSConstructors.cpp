@@ -97,6 +97,27 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
         }
     }
 
+
+    // Debug: Count free and obstacle cells
+    std::size_t free_cells = 0, obstacle_cells = 0;
+    for (std::size_t ix = 0; ix < cspace.m_x_cells; ++ix) {
+        for (std::size_t iy = 0; iy < cspace.m_y_cells; ++iy) {
+            if (cspace(ix, iy)) obstacle_cells++;
+            else free_cells++;
+        }
+    }
+    std::cout << "[DEBUG] Manipulator C-space: " << free_cells << " free cells, " << obstacle_cells << " obstacle cells." << std::endl;
+
+    // --- Visualization of initial configuration for WS2 ---
+    // Only visualize if workspace 2 is selected (add your own condition if needed)
+    // Example: Visualize the manipulator at its initial configuration
+    // You may need to include your visualization header and use your visualization class
+    // This is a placeholder for where you would call your visualization code
+    // Example:
+    // VisualizeLinkManipulator viz;
+    // viz.visualize(manipulator, q_init, env, "ws2_initial_config.png");
+    // std::cout << "Saved initial configuration visualization for WS2 as ws2_initial_config.png" << std::endl;
+
     // Returning the object of type std::unique_ptr<MyGridCSpace2D> can automatically cast it to a polymorphic base-class pointer of type std::unique_ptr<amp::GridCSpace2D>.
     // The reason why this works is not super important for our purposes, but if you are curious, look up polymorphism!
     return cspace_ptr;
@@ -160,27 +181,79 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
     wave[goal_cell.first][goal_cell.second] = 1;
     q.push(goal_cell);
     std::vector<Cell> moves = {{1,0},{-1,0},{0,1},{0,-1}};
+    // BFS initialization debug
+    std::cout << "[DEBUG] BFS queue initial size: " << q.size() << std::endl;
+    std::cout << "[DEBUG] Goal cell: (" << goal_cell.first << ", " << goal_cell.second << ")" << std::endl;
+    std::cout << "[DEBUG] Goal cell wave value: " << wave[goal_cell.first][goal_cell.second] << std::endl;
+    std::cout << "[DEBUG] Goal cell obstacle: " << (my_grid(goal_cell.first, goal_cell.second) ? "True" : "False") << std::endl;
+    // Count reachable free cells during BFS
+    int bfs_reached = 0;
     while (!q.empty()) {
         Cell curr = q.front(); q.pop();
+        bfs_reached++;
         int curr_wave = wave[curr.first][curr.second];
         for (const auto& m : moves) {
-            std::size_t nx_cell = curr.first + m.first;
-            std::size_t ny_cell = curr.second + m.second;
-            if (nx_cell < nx && ny_cell < ny && wave[nx_cell][ny_cell] == -1) {
+            int nx_cell = static_cast<int>(curr.first) + m.first;
+            int ny_cell = static_cast<int>(curr.second) + m.second;
+            // Wrap around for periodic joint angles
+            if (nx_cell < 0) nx_cell = nx - 1;
+            if (nx_cell >= static_cast<int>(nx)) nx_cell = 0;
+            if (ny_cell < 0) ny_cell = ny - 1;
+            if (ny_cell >= static_cast<int>(ny)) ny_cell = 0;
+            if (wave[nx_cell][ny_cell] == -1) {
                 wave[nx_cell][ny_cell] = curr_wave + 1;
                 parent[nx_cell][ny_cell] = curr;
-                q.push({nx_cell, ny_cell});
+                q.push({static_cast<std::size_t>(nx_cell), static_cast<std::size_t>(ny_cell)});
             }
         }
     }
+    std::cout << "[DEBUG] BFS reached free cells: " << bfs_reached << std::endl;
+
+    // Debug: Print start and goal cell indices and obstacle status
+    std::cout << "[DEBUG] Start cell: (" << start_cell.first << ", " << start_cell.second << ")" << std::endl;
+    std::cout << "[DEBUG] Goal cell: (" << goal_cell.first << ", " << goal_cell.second << ")" << std::endl;
+    std::cout << "[DEBUG] Start cell is obstacle: " << (my_grid(start_cell.first, start_cell.second) ? "True" : "False") << std::endl;
+    std::cout << "[DEBUG] Goal cell is obstacle: " << (my_grid(goal_cell.first, goal_cell.second) ? "True" : "False") << std::endl;
+    // Debug: Print wave value at start and goal
+    std::cout << "[DEBUG] wave[start_cell]: " << wave[start_cell.first][start_cell.second] << std::endl;
+    std::cout << "[DEBUG] wave[goal_cell]: " << wave[goal_cell.first][goal_cell.second] << std::endl;
+
+    // Debug: Show neighbors of start cell and their obstacle status
+    std::cout << "[DEBUG] Start cell neighbors and obstacle status:" << std::endl;
+    int dx[4] = {1, -1, 0, 0};
+    int dy[4] = {0, 0, 1, -1};
+    for (int dir = 0; dir < 4; ++dir) {
+        int nx = start_cell.first + dx[dir];
+        int ny = start_cell.second + dy[dir];
+        if (nx >= 0 && nx < my_grid.m_x_cells && ny >= 0 && ny < my_grid.m_y_cells) {
+            std::cout << "  Neighbor (" << nx << ", " << ny << ") obstacle: " << (my_grid(nx, ny) ? "True" : "False") << std::endl;
+        }
+    }
+
+    // Debug: Show raw joint values and grid indices for start cell
+    std::cout << "[DEBUG] Raw start joint values: (" << q_init[0] << ", " << q_init[1] << ")" << std::endl;
+    double two_pi = 2.0 * M_PI;
+    double q0_wrapped = q_init[0];
+    double q1_wrapped = q_init[1];
+    if (q0_wrapped < 0) q0_wrapped += two_pi;
+    if (q1_wrapped < 0) q1_wrapped += two_pi;
+    std::cout << "[DEBUG] Wrapped start joint values: (" << q0_wrapped << ", " << q1_wrapped << ")" << std::endl;
+    int start_x = static_cast<int>((q0_wrapped - my_grid.m_x_min) / (my_grid.m_x_max - my_grid.m_x_min) * my_grid.m_x_cells);
+    int start_y = static_cast<int>((q1_wrapped - my_grid.m_y_min) / (my_grid.m_y_max - my_grid.m_y_min) * my_grid.m_y_cells);
+    std::cout << "[DEBUG] Computed start cell indices: (" << start_x << ", " << start_y << ")" << std::endl;
 
     // Trace path from start to goal
     amp::Path2D path;
-    Cell curr = start_cell;
-    if (wave[curr.first][curr.second] < 0) {
-        // No path found
+    // Robust validity check for start and goal
+    if (wave[start_cell.first][start_cell.second] < 0) {
+        std::cerr << "[ERR] ERROR (planInCSpace): Start state is not valid (in obstacle or unreachable)!" << std::endl;
         return path;
     }
+    if (wave[goal_cell.first][goal_cell.second] < 0) {
+        std::cerr << "[ERR] ERROR (planInCSpace): Goal state is not valid (in obstacle or unreachable)!" << std::endl;
+        return path;
+    }
+    Cell curr = start_cell;
     std::vector<Cell> cell_path;
     while (curr != goal_cell) {
         cell_path.push_back(curr);
@@ -205,13 +278,8 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
     if (path.waypoints.size() > 0) {
         path.waypoints.front() = q_init;
         path.waypoints.back() = q_goal;
-    }
-    
-    if (path.waypoints.size() > 0) {
-        std::cout << "[DEBUG] First waypoint: [" << path.waypoints.front().transpose() << "]\n";
-        std::cout << "[DEBUG] Last waypoint:  [" << path.waypoints.back().transpose() << "]\n";
-        std::cout << "[DEBUG] q_init:         [" << q_init.transpose() << "]\n";
-        std::cout << "[DEBUG] q_goal:         [" << q_goal.transpose() << "]\n";
+        std::cout << "[DEBUG] First point of path: [" << path.waypoints.front().transpose() << "]" << std::endl;
+        std::cout << "[DEBUG] Last point of path:  [" << path.waypoints.back().transpose() << "]" << std::endl;
     }
     if (isManipulator) {
         // Wrap negative joint values to [0, 2*pi]
@@ -227,3 +295,4 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
     }
     return path;
 }
+

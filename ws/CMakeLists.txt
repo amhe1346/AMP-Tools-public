@@ -25,6 +25,11 @@ foreach(SUBDIR ${HW_SUBDIRECTORIES})
         # Remove benchmark sources from USER_SOURCES if SUBDIR is hw7
         if(SUBDIR STREQUAL "hw7")
             list(FILTER USER_SOURCES EXCLUDE REGEX ".*hw7/benchmark/.*\\.cpp$")
+            list(FILTER USER_SOURCES EXCLUDE REGEX ".*hw7/hw2_.*\\.cpp$")
+        endif()
+        # Remove hw6_ex2 from main-hw6
+        if(SUBDIR STREQUAL "hw6")
+            list(FILTER USER_SOURCES EXCLUDE REGEX ".*hw6/hw6_ex2\\.cpp$")
         endif()
         set(TARGET_NAME "main-${SUBDIR}")
         add_executable(${TARGET_NAME} ${USER_SOURCES})
@@ -57,6 +62,83 @@ foreach(SUBDIR ${HW_SUBDIRECTORIES})
 
     endif()
 endforeach()
+
+# Add HW2 Exercise 2 executables
+add_executable(hw2-exercise2 
+    hw7/hw2_exercise2.cpp
+    hw7/MySamplingBasedPlanners.cpp
+    hw7/PathSmoothing.cpp
+)
+target_link_libraries(hw2-exercise2 PRIVATE
+    yaml-cpp
+    Eigen3::Eigen
+    AMPCorePrivate
+    AMPCorePublic
+    user_library
+)
+target_include_directories(hw2-exercise2 PUBLIC
+    ${AMP_INCLUDE_DIRS}
+    ${AMP_DEPENDENCY_INCLUDE_DIRS}
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+    "${CMAKE_CURRENT_SOURCE_DIR}/hw7"
+)
+
+add_executable(hw2-benchmark
+    hw7/hw2_benchmark.cpp
+    hw7/MySamplingBasedPlanners.cpp
+    hw7/PathSmoothing.cpp
+)
+target_link_libraries(hw2-benchmark PRIVATE
+    yaml-cpp
+    Eigen3::Eigen
+    AMPCorePrivate
+    AMPCorePublic
+    user_library
+)
+target_include_directories(hw2-benchmark PUBLIC
+    ${AMP_INCLUDE_DIRS}
+    ${AMP_DEPENDENCY_INCLUDE_DIRS}
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+    "${CMAKE_CURRENT_SOURCE_DIR}/hw7"
+)
+
+add_executable(hw2-smoothed-benchmark
+    hw7/hw2_smoothed_benchmark.cpp
+    hw7/MySamplingBasedPlanners.cpp
+    hw7/PathSmoothing.cpp
+)
+target_link_libraries(hw2-smoothed-benchmark PRIVATE
+    yaml-cpp
+    Eigen3::Eigen
+    AMPCorePrivate
+    AMPCorePublic
+    user_library
+)
+target_include_directories(hw2-smoothed-benchmark PUBLIC
+    ${AMP_INCLUDE_DIRS}
+    ${AMP_DEPENDENCY_INCLUDE_DIRS}
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+    "${CMAKE_CURRENT_SOURCE_DIR}/hw7"
+)
+
+add_executable(hw6-ex2
+    hw6/hw6_ex2.cpp
+    hw6/MyCSConstructors.cpp
+    hw6/MyAStar.cpp
+)
+target_link_libraries(hw6-ex2 PRIVATE
+    yaml-cpp
+    Eigen3::Eigen
+    AMPCorePrivate
+    AMPCorePublic
+    user_library
+)
+target_include_directories(hw6-ex2 PUBLIC
+    ${AMP_INCLUDE_DIRS}
+    ${AMP_DEPENDENCY_INCLUDE_DIRS}
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+    "${CMAKE_CURRENT_SOURCE_DIR}/hw6"
+)
 
 add_subdirectory(hw7/benchmark)
 
