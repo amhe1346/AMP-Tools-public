@@ -2,6 +2,7 @@
 #include <random>
 #include <cmath>
 #include "../shared/MyCollisionChecker.h"
+#include "PathSmoothing.h"
 
 // Implement your PRM algorithm here
 amp::Path2D MyPRM::plan(const amp::Problem2D& problem) {
@@ -117,6 +118,11 @@ amp::Path2D MyPRM::plan(const amp::Problem2D& problem) {
     }
     std::reverse(path.waypoints.begin(), path.waypoints.end());
     path.valid = (path.waypoints.size() > 1);
+
+    // Apply only gradient smoothing to keep all waypoints but smooth their positions
+    amp::Path2D smoothed_path = PathSmoothing::gradientSmoothing(path, problem, 50, 0.1);
+    path = smoothed_path;
+
     return path;
 }
 

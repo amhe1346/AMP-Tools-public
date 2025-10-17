@@ -1,0 +1,11 @@
+to run 
+You need to set the library path before running. In your WSL terminal, run:
+
+LD_LIBRARY_PATH=./install/ubuntu22/lib:$LD_LIBRARY_PATH ./build/bin/main-hw7
+
+This sets the path to find the libyaml-cpp.so.0.8 library that your program needs.
+
+rebuild 
+
+wsl bash -c 
+  "cd /home/aeheerten/code/AMP-Tools-public && cmake --build build"

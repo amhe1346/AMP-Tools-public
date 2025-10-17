@@ -53,7 +53,7 @@ void run_prm_benchmark(const std::string& ws_name, int ws_num) {
     }
     results.close();
     std::cout << "Benchmarking complete. Generating boxplot..." << std::endl;
-    int ret = system("python3 ws/hw7/prm_boxplot.py");
+    int ret = system("PYTHONPATH=$(pwd)/scripts python3 ws/hw7/prm_boxplot.py");
     if (ret != 0) {
         std::cerr << "Boxplot generation failed. Please check Python and required packages." << std::endl;
     }

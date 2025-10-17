@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.8)
 add_executable(prm_benchmark-hw7
     prm_benchmark.cpp
     ../MySamplingBasedPlanners.cpp
+    ../PathSmoothing.cpp
     # Add other required sources if needed
 )
 
