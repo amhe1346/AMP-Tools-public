@@ -139,4 +139,45 @@ public:
     }
 };
 
+// C-space collision checker for grid-based collision detection
+class MyCSpaceCollisionChecker {
+public:
+    MyCSpaceCollisionChecker(const amp::GridCSpace2D* cspace) : m_cspace(cspace) {}
+    
+    // Check if a point is in collision using the C-space grid
+    bool inCollision(double x, double y) const {
+        auto cell = m_cspace->getCellFromPoint(x, y);
+        return (*m_cspace)(cell.first, cell.second);
+    }
+    
+    // Check if a path is valid by sampling points along it
+    bool isValidPath(const Eigen::Vector2d& start, const Eigen::Vector2d& end) const {
+        const int num_checks = 20;
+        for (int i = 0; i <= num_checks; ++i) {
+            double t = static_cast<double>(i) / num_checks;
+            Eigen::Vector2d point = start + t * (end - start);
+            if (inCollision(point.x(), point.y())) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // Check if a point is valid (not in collision and within bounds)
+    bool isValidPoint(const Eigen::Vector2d& point) const {
+        auto x_bounds = m_cspace->x0Bounds();
+        auto y_bounds = m_cspace->x1Bounds();
+        
+        if (point.x() < x_bounds.first || point.x() > x_bounds.second ||
+            point.y() < y_bounds.first || point.y() > y_bounds.second) {
+            return false;
+        }
+        
+        return !inCollision(point.x(), point.y());
+    }
+    
+private:
+    const amp::GridCSpace2D* m_cspace;
+};
+
 } // namespace amp

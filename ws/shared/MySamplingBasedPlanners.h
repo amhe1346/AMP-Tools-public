@@ -26,3 +26,12 @@ class MyRRT : public amp::GoalBiasRRT2D {
     private:
         bool isValidPath(const Eigen::Vector2d& start, const Eigen::Vector2d& end, const amp::Problem2D& problem);
 };
+
+class MyRRTWithVisualization : public MyRRT {
+    public:
+        amp::Path2D planWithVisualization(const amp::Problem2D& problem);
+        
+    private:
+        void printRRTProgress(int iteration, int total_iterations, const std::vector<Eigen::Vector2d>& tree_nodes,
+                             const Eigen::Vector2d& start, const Eigen::Vector2d& goal);
+};

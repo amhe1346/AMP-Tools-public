@@ -30,7 +30,7 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& pro
             agent.radius
         );
         
-        // Plan path using C-space
+        // Plan path using C-space (which internally uses MyGoalBiasRRT)
         amp::Path2D agent_path = cspace.planPath(agent.q_init, agent.q_goal);
         
         multi_agent_path.agent_paths.push_back(agent_path);
@@ -66,7 +66,7 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
             agent.radius
         );
         
-        // Plan path using C-space
+        // Plan path using C-space (which internally uses MyGoalBiasRRT)
         amp::Path2D agent_path = cspace.planPath(agent.q_init, agent.q_goal);
         
         multi_agent_path.agent_paths.push_back(agent_path);
