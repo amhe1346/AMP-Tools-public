@@ -61,8 +61,8 @@ int main(int argc, char** argv) {
     std::cout << "Generating sample visualizations for benchmark..." << std::endl;
 
     std::vector<std::pair<int, double>> sample_params = {
-        {200, 0.5}, {200, 1}, {200, 1.5}, {200, 2},
-        {500, 0.5}, {500, 1}, {500, 1.5}, {500, 2}
+        {200, 0.5}, ///{200, 1}, {200, 1.5}, {200, 2},
+       /// {500, 0.5}, {500, 1}, {500, 1.5}, {500, 2}
     };
     for (const auto& [n, r] : sample_params) {
         MyPRM sample_prm;
@@ -78,7 +78,6 @@ int main(int argc, char** argv) {
         Visualizer::makeFigure(problem, sample_path, *sample_prm.getGraph(), sample_prm.getNodes());
     }
     Visualizer::saveFigures();
-
     // Grade method
     HW7::grade<MyPRM, MyRRT>("amy.heerten@colorado.edu", argc, argv, std::make_tuple(), std::make_tuple());
     return 0;
