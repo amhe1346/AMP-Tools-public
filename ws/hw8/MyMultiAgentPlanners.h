@@ -13,7 +13,7 @@
 
 class MyCentralPlanner : public amp::CentralizedMultiAgentRRT {
     public:
-        virtual amp::MultiAgentPath2D plan(const amp::MultiAgentProblem2D& problem) override; 
+        virtual amp::MultiAgentPath2D plan(const amp::MultiAgentProblem2D& problem) override;
 };
 
 
