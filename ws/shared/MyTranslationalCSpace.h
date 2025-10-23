@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AMPCore.h"
+#include "minowskisum.h"
 #include "MySamplingBasedPlanners.h"
 #include "MyCollisionChecker.h"
 #include <iostream>
@@ -75,8 +76,8 @@ public:
     // Get a collision-free path using MyGoalBiasRRT with visualization
     amp::Path2D planPath(const Eigen::Vector2d& start, const Eigen::Vector2d& goal) const {
         std::cout << "C-Space planning from (" << start.x() << "," << start.y() << ") to (" 
-                  << goal.x() << "," << goal.y() << ") using MyGoalBiasRRT" << std::endl;
-        
+                  << goal.x() << "," << goal.y() << ") using MyCSpaceRRT" << std::endl;
+
         // Create a problem for the point robot in the expanded obstacle space
         amp::Problem2D point_robot_problem;
         point_robot_problem.q_init = start;
@@ -85,21 +86,21 @@ public:
         point_robot_problem.x_max = x0Bounds().second;
         point_robot_problem.y_min = x1Bounds().first;
         point_robot_problem.y_max = x1Bounds().second;
-        point_robot_problem.obstacles = m_obstacles; // Already expanded obstacles
-        
-        // Use MyGoalBiasRRT for planning with C-space collision checking
+        point_robot_problem.obstacles.clear(); // Obstacles are not used in C-space grid
+
+        // Use MyCSpaceRRT for planning with C-space collision checking
         MyCSpaceRRT cspace_rrt(this);
         amp::Path2D path = cspace_rrt.planInCSpace(point_robot_problem);
-        
+
         // Create visualizations as figures
         createVisualizationFigures(start, goal, path);
-        
+
         // Ensure path starts and ends at exact positions
         if (!path.waypoints.empty()) {
             path.waypoints.front() = start;
             path.waypoints.back() = goal;
         }
-        
+
         return path;
     }
     
@@ -198,30 +199,33 @@ private:
         auto grid_size = size();
         auto x_bounds = x0Bounds();
         auto y_bounds = x1Bounds();
-        
         double cell_width_x = (x_bounds.second - x_bounds.first) / grid_size.first;
         double cell_width_y = (y_bounds.second - y_bounds.first) / grid_size.second;
-        
-        std::cout << "Computing C-Space with " << grid_size.first << "x" << grid_size.second 
+        std::cout << "Computing C-Space with " << grid_size.first << "x" << grid_size.second
                   << " cells, robot radius: " << m_robot_radius << std::endl;
-        
-        // For each cell in the grid, check if placing robot center there causes collision
+
+        // --- Minkowski sum expansion ---
+        // Approximate the robot as a circle polygon
+        std::vector<Eigen::Vector2d> robot_poly = amp::makeCirclePolygon(Eigen::Vector2d(0,0), m_robot_radius, 20);
+        // Expand each obstacle using Minkowski sum
+        std::vector<std::vector<Eigen::Vector2d>> expanded_obstacles;
+        for (const auto& obs : m_obstacles) {
+            expanded_obstacles.push_back(amp::computeCSpaceObstacle(obs.verticesCCW(), robot_poly));
+        }
+
+        // For each cell in the grid, check if the cell center is inside any expanded obstacle
         for (std::size_t i = 0; i < grid_size.first; ++i) {
             for (std::size_t j = 0; j < grid_size.second; ++j) {
-                // Get the center point of this cell
                 double x = x_bounds.first + (i + 0.5) * cell_width_x;
                 double y = y_bounds.first + (j + 0.5) * cell_width_y;
-                
-                // Check if robot centered at (x,y) collides with any obstacle
+                Eigen::Vector2d pt(x, y);
                 bool in_collision = false;
-                for (const auto& obstacle : m_obstacles) {
-                    if (circlePolygonCollision(x, y, m_robot_radius, obstacle.verticesCCW())) {
+                for (const auto& expanded_obs : expanded_obstacles) {
+                    if (pointInPolygon(pt, expanded_obs)) {
                         in_collision = true;
                         break;
                     }
                 }
-                
-                // Set collision value in grid
                 operator()(i, j) = in_collision;
             }
         }
@@ -297,71 +301,36 @@ inline bool MyCSpaceRRT::isValidPath(const Eigen::Vector2d& start, const Eigen::
 }
 
 inline amp::Path2D MyCSpaceRRT::planInCSpace(const amp::Problem2D& problem) {
-    std::cout << "\n=== C-SPACE RRT PLANNING ===" << std::endl;
-    std::cout << "Start: (" << problem.q_init.x() << ", " << problem.q_init.y() << ")" << std::endl;
-    std::cout << "Goal: (" << problem.q_goal.x() << ", " << problem.q_goal.y() << ")" << std::endl;
-    
-    // Check if start and goal are valid
-    if (!isValidPoint(problem.q_init)) {
-        std::cout << "ERROR: Start point is in collision!" << std::endl;
-        amp::Path2D path;
-        path.waypoints.push_back(problem.q_init);
-        return path;
-    }
-    
-    if (!isValidPoint(problem.q_goal)) {
-        std::cout << "ERROR: Goal point is in collision!" << std::endl;
-        amp::Path2D path;
-        path.waypoints.push_back(problem.q_init);
-        return path;
-    }
-    
-    // Check direct path first
-    if (isValidPath(problem.q_init, problem.q_goal)) {
-        std::cout << "Direct path possible - using straight line!" << std::endl;
-        amp::Path2D path;
-        path.waypoints.push_back(problem.q_init);
-        path.waypoints.push_back(problem.q_goal);
-        return path;
-    }
-    
-    // RRT parameters
+    std::cout << "\n=== C-SPACE RRT PLANNING (using MyCSpaceRRT wrapper) ===" << std::endl;
+    // Custom RRT loop using C-space collision checker
     const int max_iterations = 10000;
     const double step_size = 0.1;
     const double goal_bias = 0.3;
     const double goal_threshold = 0.2;
-    
-    std::cout << "Running C-space RRT with " << max_iterations << " max iterations" << std::endl;
-    
-    // Random number generation
+
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<double> x_dist(problem.x_min, problem.x_max);
     std::uniform_real_distribution<double> y_dist(problem.y_min, problem.y_max);
     std::uniform_real_distribution<double> uniform(0.0, 1.0);
-    
-    // Tree structure
+
     struct TreeNode {
         Eigen::Vector2d position;
         int parent_index;
         TreeNode(const Eigen::Vector2d& pos, int parent) : position(pos), parent_index(parent) {}
     };
-    
+
     std::vector<TreeNode> tree;
     tree.emplace_back(problem.q_init, -1);
-    
-    int valid_extensions = 0;
-    int collision_rejections = 0;
-    
+
     for (int iter = 0; iter < max_iterations; ++iter) {
-        // Sample random point with goal bias
         Eigen::Vector2d q_rand;
         if (uniform(gen) < goal_bias) {
             q_rand = problem.q_goal;
         } else {
             q_rand = Eigen::Vector2d(x_dist(gen), y_dist(gen));
         }
-        
+
         // Find nearest node
         int nearest_index = 0;
         double min_distance = (tree[0].position - q_rand).norm();
@@ -372,64 +341,36 @@ inline amp::Path2D MyCSpaceRRT::planInCSpace(const amp::Problem2D& problem) {
                 nearest_index = i;
             }
         }
-        
-        // Extend towards random point
+
         Eigen::Vector2d q_near = tree[nearest_index].position;
         Eigen::Vector2d direction = q_rand - q_near;
         double distance = direction.norm();
-        
         Eigen::Vector2d q_new;
         if (distance <= step_size) {
             q_new = q_rand;
         } else {
             q_new = q_near + (direction / distance) * step_size;
         }
-        
-        // Check if new point and path are valid using C-space collision checking
+
+        // Use C-space collision checker
         if (isValidPoint(q_new) && isValidPath(q_near, q_new)) {
             tree.emplace_back(q_new, nearest_index);
-            valid_extensions++;
-            
-            // Check if we reached the goal
             if ((q_new - problem.q_goal).norm() < goal_threshold) {
-                std::cout << "Goal reached at iteration " << iter << "!" << std::endl;
-                std::cout << "Tree size: " << tree.size() << std::endl;
-                std::cout << "Valid extensions: " << valid_extensions << std::endl;
-                std::cout << "Collision rejections: " << collision_rejections << std::endl;
-                
                 // Reconstruct path
                 std::vector<Eigen::Vector2d> waypoints;
                 int current_index = tree.size() - 1;
-                
                 while (current_index != -1) {
                     waypoints.push_back(tree[current_index].position);
                     current_index = tree[current_index].parent_index;
                 }
-                
                 std::reverse(waypoints.begin(), waypoints.end());
-                
                 amp::Path2D path;
                 path.waypoints = waypoints;
                 return path;
             }
-        } else {
-            collision_rejections++;
-        }
-        
-        // Progress report
-        if (iter % 2000 == 0 && iter > 0) {
-            std::cout << "Iteration " << iter << ": Tree size=" << tree.size() 
-                      << ", Valid=" << valid_extensions << ", Rejected=" << collision_rejections << std::endl;
         }
     }
-    
     // No path found
-    std::cout << "RRT failed to find path after " << max_iterations << " iterations" << std::endl;
-    std::cout << "Final tree size: " << tree.size() << std::endl;
-    std::cout << "Valid extensions: " << valid_extensions << std::endl;
-    std::cout << "Collision rejections: " << collision_rejections << std::endl;
-    
-    // Return empty path
     amp::Path2D path;
     path.waypoints.push_back(problem.q_init);
     return path;
