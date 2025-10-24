@@ -8,7 +8,7 @@
 
 // This is file is loaded from the shared/ directory
 // Overwrite with your MySamplingBasedPlanners.h and MySamplingBasedPlanners.cpp from hw7
-#include "MySamplingBasedPlanners.h" 
+#include "../shared/MySamplingBasedPlanners.h"
 
 
 class MyCentralPlanner : public amp::CentralizedMultiAgentRRT {
