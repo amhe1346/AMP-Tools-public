@@ -26,19 +26,19 @@ int main(int argc, char** argv) {
     std::vector<std::vector<Eigen::Vector2d>> collision_states;
 
     // Solve using a centralized approach
-    MyCentralPlanner central_planner;
-    path = central_planner.plan(problem);
+    MyDecentralPlanner decentral_planner;
+    path = decentral_planner.plan(problem);
     bool isValid = HW8::check(path, problem, collision_states);
     Visualizer::makeFigure(problem, path, collision_states);
 
     // Solve using a decentralized approach
-   // MyDecentralPlanner decentral_planner;
+    // MyDecentralPlanner decentral_planner;
     //collision_states = {{}};
     //W8::generateAndCheck(decentral_planner, path, problem, collision_states);
     //Visualizer::makeFigure(problem, path, collision_states);
 
     // Visualize and grade methods
     Visualizer::saveFigures();
-   // HW8::grade<MyCentralPlanner, MyDecentralPlanner>("firstName.lastName@colorado.edu", argc, argv, std::make_tuple(), std::make_tuple());
+    // HW8::grade<MyCentralPlanner, MyDecentralPlanner>("firstName.lastName@colorado.edu", argc, argv, std::make_tuple(), std::make_tuple());
     return 0;
 }
