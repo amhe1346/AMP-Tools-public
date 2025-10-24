@@ -16,141 +16,328 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& pro
 MyCentralPlanner::~MyCentralPlanner() {}
 #include <algorithm>
 
-amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& problem, int n, double r, double pgoal, double epsilon) {
+
+// New: plan with precomputed C-spaces
+amp::MultiAgentPath2D MyCentralPlanner::plan(
+    const amp::MultiAgentProblem2D& problem,
+    const std::vector<amp::MyTranslationalCSpace>& cspaces,
+    int n, double r, double pgoal, double epsilon) {
+
     amp::MultiAgentPath2D multi_agent_path;
-    // --- JOINT CONFIGURATION SPACE BFS IMPLEMENTATION ---
+    // Joint GoalBiasRRT in the coupled multi-agent space
+    using JointConfig = std::vector<Eigen::Vector2d>;
+    struct JointNode {
+        JointConfig config;
+        int parent_idx;
+        JointNode(const JointConfig& c, int p) : config(c), parent_idx(p) {}
+    };
+
+    const size_t num_agents = problem.agent_properties.size();
+    const double step_size = 0.1;
+    const double goal_bias = 0.2;
+    const double goal_threshold = 0.2;
+    const int max_iterations = n;
+
+    // Initial and goal joint configs
+    JointConfig q_init, q_goal;
+    for (size_t i = 0; i < num_agents; ++i) {
+        q_init.push_back(problem.agent_properties[i].q_init);
+        q_goal.push_back(problem.agent_properties[i].q_goal);
+    }
+
+    // Random number generation for each agent
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::vector<std::uniform_real_distribution<double>> x_dists, y_dists;
+    for (size_t i = 0; i < num_agents; ++i) {
+        x_dists.emplace_back(cspaces[i].x0Bounds().first, cspaces[i].x0Bounds().second);
+        y_dists.emplace_back(cspaces[i].x1Bounds().first, cspaces[i].x1Bounds().second);
+    }
+    std::uniform_real_distribution<double> uniform(0.0, 1.0);
+
+    // Tree of joint configs
+    std::vector<JointNode> tree;
+    tree.emplace_back(q_init, -1);
+
+    auto is_valid_joint = [&](const JointConfig& config) {
+        // Check each agent for obstacle collision
+        for (size_t i = 0; i < num_agents; ++i) {
+            if (cspaces[i].inCollision(config[i].x(), config[i].y())) {
+                std::cout << "[JOINT RRT] Agent " << i << " in collision with obstacle at " << config[i].transpose() << std::endl;
+                return false;
+            }
+        }
+        // Check for inter-agent collisions (distance < sum of radii)
+        for (size_t i = 0; i < num_agents; ++i) {
+            for (size_t j = i+1; j < num_agents; ++j) {
+                double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius;
+                if ((config[i] - config[j]).norm() < min_dist) {
+                    std::cout << "[JOINT RRT] Agents " << i << " and " << j << " in collision: dist=" << (config[i] - config[j]).norm() << " < " << min_dist << std::endl;
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    auto distance = [&](const JointConfig& a, const JointConfig& b) {
+        double d = 0.0;
+        for (size_t i = 0; i < num_agents; ++i) d += (a[i] - b[i]).squaredNorm();
+        return std::sqrt(d);
+    };
+
+    int goal_idx = -1;
+    for (int iter = 0; iter < max_iterations; ++iter) {
+        // Sample joint config
+        JointConfig q_rand(num_agents);
+        if (uniform(gen) < goal_bias) {
+            q_rand = q_goal;
+        } else {
+            for (size_t i = 0; i < num_agents; ++i) {
+                q_rand[i].x() = x_dists[i](gen);
+                q_rand[i].y() = y_dists[i](gen);
+            }
+        }
+        // Find nearest node in tree
+        int nearest_idx = 0;
+        double min_dist = distance(tree[0].config, q_rand);
+        for (size_t i = 1; i < tree.size(); ++i) {
+            double d = distance(tree[i].config, q_rand);
+            if (d < min_dist) { min_dist = d; nearest_idx = i; }
+        }
+        // Extend: move each agent toward its sampled goal by step_size
+        JointConfig q_new = tree[nearest_idx].config;
+        for (size_t i = 0; i < num_agents; ++i) {
+            Eigen::Vector2d dir = q_rand[i] - q_new[i];
+            double len = dir.norm();
+            if (len > step_size) dir = dir / len * step_size;
+            q_new[i] += dir;
+        }
+        // Check new joint config for obstacle and inter-agent collisions
+        if (!is_valid_joint(q_new)) continue;
+        // Check edge (motion) validity for each agent
+        bool edge_valid = true;
+        for (size_t i = 0; i < num_agents; ++i) {
+            if (!cspaces[i].isValidPath(tree[nearest_idx].config[i], q_new[i])) {
+                std::cout << "[JOINT RRT] Agent " << i << " edge collision from " << tree[nearest_idx].config[i].transpose() << " to " << q_new[i].transpose() << std::endl;
+                edge_valid = false; break;
+            }
+        }
+        if (!edge_valid) continue;
+        // Add to tree
+        tree.emplace_back(q_new, nearest_idx);
+        // Check for goal
+        if (distance(q_new, q_goal) < goal_threshold) {
+            goal_idx = tree.size() - 1;
+            break;
+        }
+    }
+
+    multi_agent_path.agent_paths.resize(num_agents);
+    if (goal_idx != -1) {
+        // Reconstruct joint path
+        std::vector<JointConfig> joint_path;
+        int idx = goal_idx;
+        while (idx != -1) {
+            joint_path.push_back(tree[idx].config);
+            idx = tree[idx].parent_idx;
+        }
+        std::reverse(joint_path.begin(), joint_path.end());
+        // Fill agent paths
+        for (size_t agent_idx = 0; agent_idx < num_agents; ++agent_idx) {
+            for (const auto& joint : joint_path) {
+                multi_agent_path.agent_paths[agent_idx].waypoints.push_back(joint[agent_idx]);
+            }
+        }
+        // Final path validation
+        bool path_valid = true;
+        for (size_t t = 0; t < joint_path.size(); ++t) {
+            // Obstacle and inter-agent collision at each step
+            for (size_t i = 0; i < num_agents; ++i) {
+                if (cspaces[i].inCollision(joint_path[t][i].x(), joint_path[t][i].y())) {
+                    std::cout << "[PATH VALIDATION] Agent " << i << " in collision at step " << t << " pos " << joint_path[t][i].transpose() << std::endl;
+                    path_valid = false;
+                }
+            }
+            for (size_t i = 0; i < num_agents; ++i) {
+                for (size_t j = i+1; j < num_agents; ++j) {
+                    double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius;
+                    if ((joint_path[t][i] - joint_path[t][j]).norm() < min_dist) {
+                        std::cout << "[PATH VALIDATION] Agents " << i << " and " << j << " collide at step " << t << " dist=" << (joint_path[t][i] - joint_path[t][j]).norm() << " < " << min_dist << std::endl;
+                        path_valid = false;
+                    }
+                }
+            }
+            // Edge (motion) collision for each agent
+            if (t > 0) {
+                for (size_t i = 0; i < num_agents; ++i) {
+                    if (!cspaces[i].isValidPath(joint_path[t-1][i], joint_path[t][i])) {
+                        std::cout << "[PATH VALIDATION] Agent " << i << " edge collision from step " << (t-1) << " to " << t << std::endl;
+                        path_valid = false;
+                    }
+                }
+            }
+        }
+        multi_agent_path.valid = path_valid;
+    } else {
+        multi_agent_path.valid = false;
+    }
+    return multi_agent_path;
+}
+
+// Old plan: fallback to new plan with internal C-space construction
+amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& problem, int n, double r, double pgoal, double epsilon) {
+    // Build C-spaces as before
     std::vector<amp::MyTranslationalCSpace> cspaces;
-    std::vector<std::pair<std::size_t, std::size_t>> start_cells, goal_cells;
     for (size_t agent_idx = 0; agent_idx < problem.agent_properties.size(); ++agent_idx) {
         const auto& agent = problem.agent_properties[agent_idx];
         std::size_t grid_resolution = std::max(40, std::min(120, (int)(80.0 / agent.radius)));
-        amp::MyTranslationalCSpace cspace(
+        cspaces.emplace_back(
             grid_resolution, grid_resolution,
             problem.x_min, problem.x_max,
             problem.y_min, problem.y_max,
             problem.obstacles,
             agent.radius
         );
-        cspaces.push_back(cspace);
-        start_cells.push_back(cspace.getCellFromPoint(agent.q_init.x(), agent.q_init.y()));
-        goal_cells.push_back(cspace.getCellFromPoint(agent.q_goal.x(), agent.q_goal.y()));
+    }
+    return plan(problem, cspaces, n, r, pgoal, epsilon);
+}
+
+// MyDecentralPlanner: add new plan method with precomputed C-spaces
+amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& problem,
+    const std::vector<amp::MyTranslationalCSpace>& cspaces,
+    int n, double r, double pgoal, double epsilon) {
+    // Joint GoalBiasRRT in the coupled multi-agent space
+    using JointConfig = std::vector<Eigen::Vector2d>;
+    struct JointNode {
+        JointConfig config;
+        int parent_idx;
+        JointNode(const JointConfig& c, int p) : config(c), parent_idx(p) {}
+    };
+
+    const size_t num_agents = problem.agent_properties.size();
+    const double step_size = 0.1;
+    const double goal_bias = 0.2;
+    const double goal_threshold = 0.2;
+    const int max_iterations = n;
+
+    // Initial and goal joint configs
+    JointConfig q_init, q_goal;
+    for (size_t i = 0; i < num_agents; ++i) {
+        q_init.push_back(problem.agent_properties[i].q_init);
+        q_goal.push_back(problem.agent_properties[i].q_goal);
     }
 
-    struct JointState {
-        std::vector<std::pair<std::size_t, std::size_t>> cells; // one per agent (i,j)
-        int time = 0;
-        std::shared_ptr<JointState> parent;
-        bool operator==(const JointState& other) const { return cells == other.cells; }
-    };
-    struct JointStateHash {
-        std::size_t operator()(const JointState& s) const {
-            std::size_t h = 0;
-            for (const auto& c : s.cells) h ^= std::hash<std::size_t>()(c.first) ^ std::hash<std::size_t>()(c.second);
-            return h;
-        }
-    };
+    // Random number generation for each agent
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::vector<std::uniform_real_distribution<double>> x_dists, y_dists;
+    for (size_t i = 0; i < num_agents; ++i) {
+        x_dists.emplace_back(cspaces[i].x0Bounds().first, cspaces[i].x0Bounds().second);
+        y_dists.emplace_back(cspaces[i].x1Bounds().first, cspaces[i].x1Bounds().second);
+    }
+    std::uniform_real_distribution<double> uniform(0.0, 1.0);
 
-    auto is_valid = [&](const JointState& s) {
+    // Tree of joint configs
+    std::vector<JointNode> tree;
+    tree.emplace_back(q_init, -1);
+
+    auto is_valid_joint = [&](const JointConfig& config) {
         // Check each agent for obstacle collision
-        for (size_t i = 0; i < s.cells.size(); ++i) {
-            if (cspaces[i](s.cells[i].first, s.cells[i].second)) return false; // true means in collision
+        for (size_t i = 0; i < num_agents; ++i) {
+            if (cspaces[i].inCollision(config[i].x(), config[i].y())) {
+                std::cout << "[JOINT RRT] Agent " << i << " in collision with obstacle at " << config[i].transpose() << std::endl;
+                return false;
+            }
         }
-        // Check for inter-agent collisions (same cell)
-        for (size_t i = 0; i < s.cells.size(); ++i) {
-            for (size_t j = i+1; j < s.cells.size(); ++j) {
-                if (s.cells[i] == s.cells[j]) return false;
+        // Check for inter-agent collisions (distance < sum of radii)
+        for (size_t i = 0; i < num_agents; ++i) {
+            for (size_t j = i+1; j < num_agents; ++j) {
+                double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius;
+                if ((config[i] - config[j]).norm() < min_dist) {
+                    std::cout << "[JOINT RRT] Agents " << i << " and " << j << " in collision: dist=" << (config[i] - config[j]).norm() << " < " << min_dist << std::endl;
+                    return false;
+                }
             }
         }
         return true;
     };
 
-    // 2. BFS in joint space
-    std::queue<std::shared_ptr<JointState>> q;
-    std::unordered_set<JointState, JointStateHash> visited;
-    auto joint_start = std::make_shared<JointState>();
-    joint_start->cells = start_cells;
-    joint_start->time = 0;
-    joint_start->parent = nullptr;
-    q.push(joint_start);
-    visited.insert(*joint_start);
-    std::shared_ptr<JointState> joint_goal = nullptr;
-
-    // 3. Define possible moves (4-connected grid + stay)
-    std::vector<std::pair<int,int>> moves = {
-        {1,0}, {-1,0}, {0,1}, {0,-1}, {0,0}
+    auto distance = [&](const JointConfig& a, const JointConfig& b) {
+        double d = 0.0;
+        for (size_t i = 0; i < num_agents; ++i) d += (a[i] - b[i]).squaredNorm();
+        return std::sqrt(d);
     };
-    // Use r as step size, n as max_iterations, pgoal as goal bias, epsilon as goal threshold
-    int max_iterations = n;
-    double step_size = r;
-    double goal_bias = pgoal;
-    double goal_threshold = epsilon;
 
-    while (!q.empty()) {
-        auto curr = q.front(); q.pop();
-        if (curr->cells == goal_cells) { joint_goal = curr; break; }
-        // Generate all combinations of moves for all agents
-        std::vector<std::vector<std::pair<int,int>>> agent_moves(curr->cells.size(), moves);
-        // For each agent, try all moves (cartesian product)
-        std::vector<size_t> idx(curr->cells.size(), 0);
-        while (true) {
-            // Build next joint state
-            JointState next;
-            next.cells.resize(curr->cells.size());
-            for (size_t i = 0; i < curr->cells.size(); ++i) {
-                next.cells[i].first = static_cast<int>(curr->cells[i].first) + agent_moves[i][idx[i]].first;
-                next.cells[i].second = static_cast<int>(curr->cells[i].second) + agent_moves[i][idx[i]].second;
-                // Clamp to grid bounds
-                auto sz = cspaces[i].size();
-                if (next.cells[i].first < 0) next.cells[i].first = 0;
-                if (next.cells[i].second < 0) next.cells[i].second = 0;
-                if (next.cells[i].first >= sz.first) next.cells[i].first = sz.first - 1;
-                if (next.cells[i].second >= sz.second) next.cells[i].second = sz.second - 1;
+    int goal_idx = -1;
+    for (int iter = 0; iter < max_iterations; ++iter) {
+        // Sample joint config
+        JointConfig q_rand(num_agents);
+        if (uniform(gen) < goal_bias) {
+            q_rand = q_goal;
+        } else {
+            for (size_t i = 0; i < num_agents; ++i) {
+                q_rand[i].x() = x_dists[i](gen);
+                q_rand[i].y() = y_dists[i](gen);
             }
-            next.time = curr->time + 1;
-            next.parent = curr;
-            if (is_valid(next) && !visited.count(next)) {
-                visited.insert(next);
-                q.push(std::make_shared<JointState>(next));
+        }
+        // Find nearest node in tree
+        int nearest_idx = 0;
+        double min_dist = distance(tree[0].config, q_rand);
+        for (size_t i = 1; i < tree.size(); ++i) {
+            double d = distance(tree[i].config, q_rand);
+            if (d < min_dist) { min_dist = d; nearest_idx = i; }
+        }
+        // Extend: move each agent toward its sampled goal by step_size
+        JointConfig q_new = tree[nearest_idx].config;
+        for (size_t i = 0; i < num_agents; ++i) {
+            Eigen::Vector2d dir = q_rand[i] - q_new[i];
+            double len = dir.norm();
+            if (len > step_size) dir = dir / len * step_size;
+            q_new[i] += dir;
+        }
+        // Check new joint config for obstacle and inter-agent collisions
+        if (!is_valid_joint(q_new)) continue;
+        // Check edge (motion) validity for each agent
+        bool edge_valid = true;
+        for (size_t i = 0; i < num_agents; ++i) {
+            if (!cspaces[i].isValidPath(tree[nearest_idx].config[i], q_new[i])) {
+                std::cout << "[JOINT RRT] Agent " << i << " edge collision from " << tree[nearest_idx].config[i].transpose() << " to " << q_new[i].transpose() << std::endl;
+                edge_valid = false; break;
             }
-            // Increment idx (cartesian product)
-            size_t k = 0;
-            while (k < idx.size()) {
-                idx[k]++;
-                if (idx[k] < agent_moves[k].size()) break;
-                idx[k] = 0; k++;
-            }
-            if (k == idx.size()) break;
+        }
+        if (!edge_valid) continue;
+        // Add to tree
+        tree.emplace_back(q_new, nearest_idx);
+        // Check for goal
+        if (distance(q_new, q_goal) < goal_threshold) {
+            goal_idx = tree.size() - 1;
+            break;
         }
     }
 
-    // 4. Extract joint path if found
-    if (joint_goal) {
-        std::vector<std::vector<std::pair<std::size_t, std::size_t>>> joint_path;
-        for (auto ptr = joint_goal; ptr; ptr = ptr->parent) {
-            joint_path.push_back(ptr->cells);
+    amp::MultiAgentPath2D multi_agent_path;
+    multi_agent_path.agent_paths.resize(num_agents);
+    if (goal_idx != -1) {
+        // Reconstruct joint path
+        std::vector<JointConfig> joint_path;
+        int idx = goal_idx;
+        while (idx != -1) {
+            joint_path.push_back(tree[idx].config);
+            idx = tree[idx].parent_idx;
         }
         std::reverse(joint_path.begin(), joint_path.end());
-        // Convert grid path to world path for each agent
-        multi_agent_path.agent_paths.resize(cspaces.size());
-        for (size_t agent_idx = 0; agent_idx < cspaces.size(); ++agent_idx) {
-            auto sz = cspaces[agent_idx].size();
-            auto x_bounds = cspaces[agent_idx].x0Bounds();
-            auto y_bounds = cspaces[agent_idx].x1Bounds();
-            double cell_width_x = (x_bounds.second - x_bounds.first) / sz.first;
-            double cell_width_y = (y_bounds.second - y_bounds.first) / sz.second;
-            for (const auto& step : joint_path) {
-                double x = x_bounds.first + (step[agent_idx].first + 0.5) * cell_width_x;
-                double y = y_bounds.first + (step[agent_idx].second + 0.5) * cell_width_y;
-                multi_agent_path.agent_paths[agent_idx].waypoints.emplace_back(x, y);
+        // Fill agent paths
+        for (size_t agent_idx = 0; agent_idx < num_agents; ++agent_idx) {
+            for (const auto& joint : joint_path) {
+                multi_agent_path.agent_paths[agent_idx].waypoints.push_back(joint[agent_idx]);
             }
         }
         multi_agent_path.valid = true;
-        return multi_agent_path;
     } else {
-        std::cerr << "[ERROR] No joint path found in joint BFS." << std::endl;
         multi_agent_path.valid = false;
-        return multi_agent_path;
     }
+    return multi_agent_path;
 }
 
 

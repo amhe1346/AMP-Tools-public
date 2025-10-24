@@ -38,6 +38,12 @@ private:
  */
 class MyTranslationalCSpace : public amp::GridCSpace2D {
 public:
+    // Check if a straight-line path is collision-free in this C-space
+    bool isValidPath(const Eigen::Vector2d& start, const Eigen::Vector2d& end) const {
+        amp::MyCSpaceCollisionChecker checker(this);
+        return checker.isValidPath(start, end);
+    }
+public:
     MyTranslationalCSpace(std::size_t x_cells, std::size_t y_cells, 
                          double x_min, double x_max, 
                          double y_min, double y_max,
