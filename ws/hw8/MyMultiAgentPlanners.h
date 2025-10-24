@@ -13,7 +13,9 @@
 
 class MyCentralPlanner : public amp::CentralizedMultiAgentRRT {
     public:
+        virtual ~MyCentralPlanner();
         virtual amp::MultiAgentPath2D plan(const amp::MultiAgentProblem2D& problem) override;
+        amp::MultiAgentPath2D plan(const amp::MultiAgentProblem2D& problem, int n, double r, double pgoal, double epsilon);
 };
 
 

@@ -1,27 +1,29 @@
+// All includes at the top
 #include "MyMultiAgentPlanners.h"
 #include "../shared/MyCollisionChecker.h"
 #include "../shared/ObstacleExpansion.h"
 #include "../shared/MyTranslationalCSpace.h"
+#include <unordered_set>
 #include <random>
 #include <algorithm>
 
+// Default override: call parameterized plan with default values
 amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& problem) {
+    // Default values: n=1000, r=1.0, pgoal=0.1, epsilon=0.5
+    return plan(problem, 1000, 1.0, 0.1, 0.5);
+}
+
+MyCentralPlanner::~MyCentralPlanner() {}
+#include <algorithm>
+
+amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& problem, int n, double r, double pgoal, double epsilon) {
     amp::MultiAgentPath2D multi_agent_path;
-    
-    // For centralized planning, we can plan for each agent individually using PRM
-    // This is a simplified approach - more advanced centralized planners would 
-    // consider joint configuration space and inter-agent collision avoidance
-    
+    // --- JOINT CONFIGURATION SPACE BFS IMPLEMENTATION ---
+    std::vector<amp::MyTranslationalCSpace> cspaces;
+    std::vector<std::pair<std::size_t, std::size_t>> start_cells, goal_cells;
     for (size_t agent_idx = 0; agent_idx < problem.agent_properties.size(); ++agent_idx) {
         const auto& agent = problem.agent_properties[agent_idx];
-        
-        // Debug: Print agent radius to see if it's reasonable
-        std::cout << "Agent " << agent_idx << " radius: " << agent.radius << std::endl;
-        
-        // Create C-space for this agent with appropriate resolution
-        // Use higher resolution for smaller agents, lower for larger agents
-        std::size_t grid_resolution = std::max(50, std::min(200, (int)(100.0 / agent.radius)));
-        
+        std::size_t grid_resolution = std::max(40, std::min(120, (int)(80.0 / agent.radius)));
         amp::MyTranslationalCSpace cspace(
             grid_resolution, grid_resolution,
             problem.x_min, problem.x_max,
@@ -29,14 +31,126 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& pro
             problem.obstacles,
             agent.radius
         );
-        
-        // Plan path using C-space (which internally uses MyGoalBiasRRT)
-        amp::Path2D agent_path = cspace.planPath(agent.q_init, agent.q_goal);
-        
-        multi_agent_path.agent_paths.push_back(agent_path);
+        cspaces.push_back(cspace);
+        start_cells.push_back(cspace.getCellFromPoint(agent.q_init.x(), agent.q_init.y()));
+        goal_cells.push_back(cspace.getCellFromPoint(agent.q_goal.x(), agent.q_goal.y()));
     }
-    
-    return multi_agent_path;
+
+    struct JointState {
+        std::vector<std::pair<std::size_t, std::size_t>> cells; // one per agent (i,j)
+        int time = 0;
+        std::shared_ptr<JointState> parent;
+        bool operator==(const JointState& other) const { return cells == other.cells; }
+    };
+    struct JointStateHash {
+        std::size_t operator()(const JointState& s) const {
+            std::size_t h = 0;
+            for (const auto& c : s.cells) h ^= std::hash<std::size_t>()(c.first) ^ std::hash<std::size_t>()(c.second);
+            return h;
+        }
+    };
+
+    auto is_valid = [&](const JointState& s) {
+        // Check each agent for obstacle collision
+        for (size_t i = 0; i < s.cells.size(); ++i) {
+            if (cspaces[i](s.cells[i].first, s.cells[i].second)) return false; // true means in collision
+        }
+        // Check for inter-agent collisions (same cell)
+        for (size_t i = 0; i < s.cells.size(); ++i) {
+            for (size_t j = i+1; j < s.cells.size(); ++j) {
+                if (s.cells[i] == s.cells[j]) return false;
+            }
+        }
+        return true;
+    };
+
+    // 2. BFS in joint space
+    std::queue<std::shared_ptr<JointState>> q;
+    std::unordered_set<JointState, JointStateHash> visited;
+    auto joint_start = std::make_shared<JointState>();
+    joint_start->cells = start_cells;
+    joint_start->time = 0;
+    joint_start->parent = nullptr;
+    q.push(joint_start);
+    visited.insert(*joint_start);
+    std::shared_ptr<JointState> joint_goal = nullptr;
+
+    // 3. Define possible moves (4-connected grid + stay)
+    std::vector<std::pair<int,int>> moves = {
+        {1,0}, {-1,0}, {0,1}, {0,-1}, {0,0}
+    };
+    // Use r as step size, n as max_iterations, pgoal as goal bias, epsilon as goal threshold
+    int max_iterations = n;
+    double step_size = r;
+    double goal_bias = pgoal;
+    double goal_threshold = epsilon;
+
+    while (!q.empty()) {
+        auto curr = q.front(); q.pop();
+        if (curr->cells == goal_cells) { joint_goal = curr; break; }
+        // Generate all combinations of moves for all agents
+        std::vector<std::vector<std::pair<int,int>>> agent_moves(curr->cells.size(), moves);
+        // For each agent, try all moves (cartesian product)
+        std::vector<size_t> idx(curr->cells.size(), 0);
+        while (true) {
+            // Build next joint state
+            JointState next;
+            next.cells.resize(curr->cells.size());
+            for (size_t i = 0; i < curr->cells.size(); ++i) {
+                next.cells[i].first = static_cast<int>(curr->cells[i].first) + agent_moves[i][idx[i]].first;
+                next.cells[i].second = static_cast<int>(curr->cells[i].second) + agent_moves[i][idx[i]].second;
+                // Clamp to grid bounds
+                auto sz = cspaces[i].size();
+                if (next.cells[i].first < 0) next.cells[i].first = 0;
+                if (next.cells[i].second < 0) next.cells[i].second = 0;
+                if (next.cells[i].first >= sz.first) next.cells[i].first = sz.first - 1;
+                if (next.cells[i].second >= sz.second) next.cells[i].second = sz.second - 1;
+            }
+            next.time = curr->time + 1;
+            next.parent = curr;
+            if (is_valid(next) && !visited.count(next)) {
+                visited.insert(next);
+                q.push(std::make_shared<JointState>(next));
+            }
+            // Increment idx (cartesian product)
+            size_t k = 0;
+            while (k < idx.size()) {
+                idx[k]++;
+                if (idx[k] < agent_moves[k].size()) break;
+                idx[k] = 0; k++;
+            }
+            if (k == idx.size()) break;
+        }
+    }
+
+    // 4. Extract joint path if found
+    if (joint_goal) {
+        std::vector<std::vector<std::pair<std::size_t, std::size_t>>> joint_path;
+        for (auto ptr = joint_goal; ptr; ptr = ptr->parent) {
+            joint_path.push_back(ptr->cells);
+        }
+        std::reverse(joint_path.begin(), joint_path.end());
+        // Convert grid path to world path for each agent
+        multi_agent_path.agent_paths.resize(cspaces.size());
+        for (size_t agent_idx = 0; agent_idx < cspaces.size(); ++agent_idx) {
+            auto sz = cspaces[agent_idx].size();
+            auto x_bounds = cspaces[agent_idx].x0Bounds();
+            auto y_bounds = cspaces[agent_idx].x1Bounds();
+            double cell_width_x = (x_bounds.second - x_bounds.first) / sz.first;
+            double cell_width_y = (y_bounds.second - y_bounds.first) / sz.second;
+            for (const auto& step : joint_path) {
+                double x = x_bounds.first + (step[agent_idx].first + 0.5) * cell_width_x;
+                double y = y_bounds.first + (step[agent_idx].second + 0.5) * cell_width_y;
+                multi_agent_path.agent_paths[agent_idx].waypoints.emplace_back(x, y);
+            }
+        }
+        multi_agent_path.valid = true;
+        return multi_agent_path;
+    } else {
+        std::cerr << "[ERROR] No joint path found in joint BFS." << std::endl;
+        multi_agent_path.valid = false;
+        return multi_agent_path;
+    }
 }
 
 
