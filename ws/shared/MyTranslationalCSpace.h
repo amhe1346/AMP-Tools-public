@@ -1,3 +1,4 @@
+#include "HelpfulClass.h"
 #pragma once
 
 #include "AMPCore.h"
