@@ -82,14 +82,24 @@ int main(int argc, char** argv) {
     }
 
     // Optionally, run DecentralPlanner for each m
+    #include "MyDecentralPlanner.cpp" // Directly include implementation for demonstration
     for (int m = 2; m <= 5; ++m) {
         amp::MultiAgentProblem2D problem = HW8::getWorkspace1(m);
-        amp::MultiAgentPath2D path;
+        std::vector<Eigen::Vector2d> q_inits, q_goals;
+        std::vector<double> radii;
+        for (const auto& agent : problem.agent_properties) {
+            q_inits.push_back(agent.q_init);
+            q_goals.push_back(agent.q_goal);
+            radii.push_back(agent.radius);
+        }
+        DecentralPlanner planner;
+        auto paths = planner.plan(q_inits, q_goals, problem.x_min, problem.x_max, problem.y_min, problem.y_max, problem.obstacles, radii);
+        // Convert paths to MultiAgentPath2D for grading/visualization
+        amp::MultiAgentPath2D mapaths;
+        mapaths.agent_paths = paths;
         std::vector<std::vector<Eigen::Vector2d>> collision_states;
-        MyDecentralPlanner decentral_planner;
-        path = decentral_planner.plan(problem);
-        bool isValidDecentral = HW8::check(path, problem, collision_states);
-        Visualizer::makeFigure(problem, path, collision_states);
+        bool isValidDecentral = HW8::check(mapaths, problem, collision_states);
+        Visualizer::makeFigure(problem, mapaths, collision_states);
     }
 
     // Visualize and grade methods

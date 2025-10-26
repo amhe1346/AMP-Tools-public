@@ -131,13 +131,13 @@ public:
         auto x_bounds = x0Bounds();
         auto y_bounds = x1Bounds();
         
-        std::cout << "\n=== C-SPACE ANALYSIS ===" << std::endl;
-        std::cout << "Grid size: " << grid_size.first << "x" << grid_size.second << std::endl;
-        std::cout << "Bounds: X[" << x_bounds.first << "," << x_bounds.second << "] Y[" 
-                  << y_bounds.first << "," << y_bounds.second << "]" << std::endl;
-        std::cout << "Robot radius: " << m_robot_radius << std::endl;
-        std::cout << "Start: (" << start.x() << "," << start.y() << ")" << std::endl;
-        std::cout << "Goal: (" << goal.x() << "," << goal.y() << ")" << std::endl;
+        //std::cout << "\n=== C-SPACE ANALYSIS ===" << std::endl;
+        //std::cout << "Grid size: " << grid_size.first << "x" << grid_size.second << std::endl;
+        //std::cout << "Bounds: X[" << x_bounds.first << "," << x_bounds.second << "] Y[" 
+         //         << y_bounds.first << "," << y_bounds.second << "]" << std::endl;
+        //std::cout << "Robot radius: " << m_robot_radius << std::endl;
+        //std::cout << "Start: (" << start.x() << "," << start.y() << ")" << std::endl;
+        //std::cout << "Goal: (" << goal.x() << "," << goal.y() << ")" << std::endl;
         
         // Check if start/goal are in collision
         auto start_cell = getCellFromPoint(start.x(), start.y());
@@ -310,7 +310,7 @@ inline bool MyCSpaceRRT::isValidPath(const Eigen::Vector2d& start, const Eigen::
 inline amp::Path2D MyCSpaceRRT::planInCSpace(const amp::Problem2D& problem) {
     std::cout << "\n=== C-SPACE RRT PLANNING (using MyCSpaceRRT wrapper) ===" << std::endl;
     // Custom RRT loop using C-space collision checker
-    const int max_iterations = 10000;
+    const int max_iterations = 50000;
     const double step_size = 0.1;
     const double goal_bias = 0.3;
     const double goal_threshold = 0.2;

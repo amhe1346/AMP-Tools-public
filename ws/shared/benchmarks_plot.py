@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 csv_files = [
     'build/bin/benchmark_results_m2.csv',
     'build/bin/benchmark_results_m3.csv',
+    'build/bin/benchmark_results_m4.csv',
     'build/bin/benchmark_results_m5.csv',
     'build/bin/benchmark_results_m6.csv'
 ]
@@ -125,7 +126,7 @@ plt.legend(["Tree Size"], loc="upper right")
 
 plt.suptitle('Decentral planner box plot of computation time and tree size by number of agents')
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-plt.savefig('decentral_planner_combined_boxplot.png')
+plt.savefig(r'C:/Users/aehee/OneDrive/Algo/New folder/New folder/box plots/decentral_planner_combined_boxplot.png')
 plt.show()
 
 print('Combined boxplot for decentral planner saved as decentral_planner_combined_boxplot.png.')
@@ -138,7 +139,7 @@ plt.title('Decentral: Average Computation Time vs. Number of Agents')
 plt.xlabel('Number of Agents (m)')
 plt.ylabel('Average Computation Time (seconds)')
 plt.grid(True)
-plt.savefig('decentral_avg_time_vs_agents.png')
+plt.savefig(r'C:/Users/aehee/OneDrive/Algo/New folder/New folder/box plots/decentral_avg_time_vs_agents.png')
 plt.show()
 
 # Plot average tree size vs. number of agents (decentral)
@@ -148,7 +149,7 @@ plt.title('Decentral: Average Tree Size vs. Number of Agents')
 plt.xlabel('Number of Agents (m)')
 plt.ylabel('Average Tree Size (total waypoints)')
 plt.grid(True)
-plt.savefig('decentral_avg_tree_size_vs_agents.png')
+plt.savefig(r'C:/Users/aehee/OneDrive/Algo/New folder/New folder/box plots/decentral_avg_tree_size_vs_agents.png')
 plt.show()
 
 print('Boxplots and summary plots saved for all agent counts (central and decentral).')
