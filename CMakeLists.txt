@@ -124,6 +124,33 @@ endif()
 add_subdirectory(scripts)
 add_subdirectory(include/public)
 add_subdirectory(src/public)
+
+# Add benchmarks executable
+
+add_executable(benchmarks
+    ws/shared/HW8.cpp
+    ws/shared/Obstacle.cpp
+    ws/shared/ConvertUtils.cpp
+    ws/shared/benchmarks.cpp
+    ws/shared/BenchmarkUtils.cpp
+    ws/hw8/MyCentralPlanner.cpp
+    ws/shared/HelpfulClass.cpp
+    ws/shared/minowskisum.cpp
+    ws/shared/MySamplingBasedPlanners.cpp
+    src/public/Visualizer.cpp
+    src/public/ScriptCaller.cpp
+    src/public/PythonObjects.cpp
+    #ws/hw8/MyMultiAgentPlanners.cpp  # Uncomment if this file exists
+)
+target_include_directories(benchmarks PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/ws/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/ws
+    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/yaml-cpp/include
+    ${PYTHON_INCLUDE_DIRS}
+)
+target_link_libraries(benchmarks PRIVATE Eigen3::Eigen OpenSSL::SSL OpenSSL::Crypto ${PYTHON_LIBRARIES})
+
 add_subdirectory(ws)
 
 # Copy the executables out of the install directory

@@ -18,6 +18,7 @@ void runBenchmarks(int min_agents, int max_agents, int num_runs, int n, double r
     MyDecentralPlanner decentral_planner;
     for (int num_agents = min_agents; num_agents <= max_agents; ++num_agents) {
         std::cout << "[DEBUG] Starting C-space construction for " << num_agents << " agents..." << std::endl;
+        // Use the same workspace for all runs of this agent count
         amp::MultiAgentProblem2D problem = HW8::getWorkspace1(num_agents);
         std::vector<amp::MyTranslationalCSpace> cached_cspaces;
         for (size_t agent_idx = 0; agent_idx < problem.agent_properties.size(); ++agent_idx) {
@@ -39,7 +40,7 @@ void runBenchmarks(int min_agents, int max_agents, int num_runs, int n, double r
             std::cerr << "Error: Could not open " << filename << " for writing." << std::endl;
             continue;
         }
-    out << "planner,run,time,tree_size,valid\n";
+        out << "planner,run,time,tree_size,valid,agent_count\n";
         // Single-agent benchmark loop
         for (int run = 0; run < num_runs; ++run) {
             auto start = std::chrono::high_resolution_clock::now();
@@ -78,9 +79,9 @@ void runBenchmarks(int min_agents, int max_agents, int num_runs, int n, double r
             std::cout << "[DEBUG] Single-agent: time = " << single_time << "s, tree_size = " << single_tree_size << ", valid = " << valid_single << std::endl;
             if (single_agent_paths.agent_paths.empty()) {
                 std::cerr << "Single-agent planner failed on run " << run << std::endl;
-                out << "single-agent," << run << ",ERROR,0,0\n";
+                out << "single-agent," << run << ",ERROR,0,0," << num_agents << "\n";
             } else {
-                out << "single-agent," << run << "," << single_time << "," << single_tree_size << "," << (valid_single ? 1 : 0) << "\n";
+                out << "single-agent," << run << "," << single_time << "," << single_tree_size << "," << (valid_single ? 1 : 0) << "," << num_agents << "\n";
             }
         }
         for (int run = 0; run < num_runs; ++run) {
@@ -96,9 +97,9 @@ void runBenchmarks(int min_agents, int max_agents, int num_runs, int n, double r
             std::cout << "[DEBUG] Central: time = " << central_time << "s, tree_size = " << central_tree_size << ", valid = " << valid_central << std::endl;
             if (central_path.agent_paths.empty()) {
                 std::cerr << "Central planner failed on run " << run << std::endl;
-                out << "central," << run << ",ERROR,0,0\n";
+                out << "central," << run << ",ERROR,0,0," << num_agents << "\n";
             } else {
-                out << "central," << run << "," << central_time << "," << central_tree_size << "," << (valid_central ? 1 : 0) << "\n";
+                out << "central," << run << "," << central_time << "," << central_tree_size << "," << (valid_central ? 1 : 0) << "," << num_agents << "\n";
             }
 
             // Decentralized planner
@@ -112,9 +113,9 @@ void runBenchmarks(int min_agents, int max_agents, int num_runs, int n, double r
             std::cout << "[DEBUG] Decentral: time = " << decentral_time << "s, tree_size = " << decentral_tree_size << ", valid = " << valid_decentral << std::endl;
             if (decentral_path.agent_paths.empty()) {
                 std::cerr << "Decentral planner failed on run " << run << std::endl;
-                out << "decentral," << run << ",ERROR,0,0\n";
+                out << "decentral," << run << ",ERROR,0,0," << num_agents << "\n";
             } else {
-                out << "decentral," << run << "," << decentral_time << "," << decentral_tree_size << "," << (valid_decentral ? 1 : 0) << "\n";
+                out << "decentral," << run << "," << decentral_time << "," << decentral_tree_size << "," << (valid_decentral ? 1 : 0) << "," << num_agents << "\n";
             }
         }
         out.close();

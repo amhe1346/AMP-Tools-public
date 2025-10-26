@@ -87,50 +87,44 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(
     int goal_idx = -1;
     for (int iter = 0; iter < max_iterations; ++iter) {
         bool valid_sample_found = false;
-    for (int resample_attempt = 0; resample_attempt < 200; ++resample_attempt) {
-            // Sample joint config
-            JointConfig q_rand(num_agents);
-            if (uniform(gen) < goal_bias) {
-                q_rand = q_goal;
-            } else {
-                // Biased sampling: ensure agents are not too close
-                bool valid_sample = false;
-                int sample_attempts = 0;
-                while (!valid_sample && sample_attempts < 20) {
-                    for (size_t i = 0; i < num_agents; ++i) {
-                        q_rand[i].x() = x_dists[i](gen);
-                        q_rand[i].y() = y_dists[i](gen);
-                    }
-                    valid_sample = true;
-                    for (size_t i = 0; i < num_agents; ++i) {
-                        for (size_t j = i+1; j < num_agents; ++j) {
-                            double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius + 0.2; // buffer is now 0.2
-                            if ((q_rand[i] - q_rand[j]).norm() < min_dist) {
-                                // Bias: move one robot clockwise, the other counter-clockwise
-                                Eigen::Vector2d diff = q_rand[i] - q_rand[j];
-                                if (diff.norm() > 1e-6) {
-                                    // Clockwise orthogonal: (-diff.y(), diff.x())
-                                    Eigen::Vector2d ortho_cw(-diff.y(), diff.x());
-                                    ortho_cw.normalize();
-                                    // Counter-clockwise orthogonal: (diff.y(), -diff.x())
-                                    Eigen::Vector2d ortho_ccw(diff.y(), -diff.x());
-                                    ortho_ccw.normalize();
-                                    double bias_dist = 0.2; // step to move away
-                                    q_rand[i] += ortho_cw * bias_dist;
-                                    q_rand[j] += ortho_ccw * bias_dist;
-                                }
-                                valid_sample = false;
-                                break;
-                            }
-                        }
-                        if (!valid_sample) break;
-                    }
-                    ++sample_attempts;
-                }
-                if (!valid_sample) {
-                    std::cout << "[JOINT RRT] Failed to find valid sample after " << sample_attempts << " attempts. Agents may be stuck in collision." << std::endl;
-                }
+    for (int resample_attempt = 0; resample_attempt < 500; ++resample_attempt) {
+        // Sample joint config
+        JointConfig q_rand(num_agents);
+        if (uniform(gen) < goal_bias) {
+            q_rand = q_goal;
+        } else {
+            bool valid_sample = true;
+            for (size_t i = 0; i < num_agents; ++i) {
+                q_rand[i].x() = x_dists[i](gen);
+                q_rand[i].y() = y_dists[i](gen);
             }
+            // If any pair is within 3 units, sample them away from each other
+            for (size_t i = 0; i < num_agents; ++i) {
+                for (size_t j = i+1; j < num_agents; ++j) {
+                    double dist = (q_rand[i] - q_rand[j]).norm();
+                    double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius + 0.2;
+                    if (dist < min_dist) {
+                        valid_sample = false;
+                        break;
+                    }
+                    // Early avoidance: if within 3 units, sample away
+                    if (dist < 5.0) {
+                        Eigen::Vector2d diff = q_rand[i] - q_rand[j];
+                        if (diff.norm() > 1e-6) {
+                            Eigen::Vector2d ortho_cw(-diff.y(), diff.x());
+                            ortho_cw.normalize();
+                            Eigen::Vector2d ortho_ccw(diff.y(), -diff.x());
+                            ortho_ccw.normalize();
+                            double bias_dist = 1.0; // move away by 1 unit
+                            q_rand[i] += ortho_cw * bias_dist;
+                            q_rand[j] += ortho_ccw * bias_dist;
+                        }
+                    }
+                }
+                if (!valid_sample) break;
+            }
+            if (!valid_sample) continue;
+        }
             // Find nearest node in tree
             int nearest_idx = 0;
             double min_dist = distance(tree[0].config, q_rand);
@@ -177,7 +171,7 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(
                 if (!edge_valid) break;
             }
             if (!edge_valid) {
-                std::cout << "[JOINT RRT] Edge collision persists for Agent(s) at step. Unable to find valid edge." << std::endl;
+               // std::cout << "[JOINT RRT] Edge collision persists for Agent(s) at step. Unable to find valid edge." << std::endl;
                 continue;
             }
             // Add to tree
@@ -233,7 +227,7 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(
             // Obstacle and inter-agent collision at each step
             for (size_t i = 0; i < num_agents; ++i) {
                 if (cspaces[i].inCollision(joint_path[t][i].x(), joint_path[t][i].y())) {
-                    std::cout << "[PATH VALIDATION] Agent " << i << " in collision at step " << t << " pos " << joint_path[t][i].transpose() << std::endl;
+                   // std::cout << "[PATH VALIDATION] Agent " << i << " in collision at step " << t << " pos " << joint_path[t][i].transpose() << std::endl;
                     path_valid = false;
                 }
             }
@@ -241,7 +235,7 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(
                 for (size_t j = i+1; j < num_agents; ++j) {
                         double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius + 0.4; // match buffer used in planning
                     if ((joint_path[t][i] - joint_path[t][j]).norm() < min_dist) {
-                        std::cout << "[PATH VALIDATION] Agents " << i << " and " << j << " collide at step " << t << " dist=" << (joint_path[t][i] - joint_path[t][j]).norm() << " < " << min_dist << std::endl;
+                        //std::cout << "[PATH VALIDATION] Agents " << i << " and " << j << " collide at step " << t << " dist=" << (joint_path[t][i] - joint_path[t][j]).norm() << " < " << min_dist << std::endl;
                         path_valid = false;
                     }
                 }
@@ -250,7 +244,7 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(
             if (t > 0) {
                 for (size_t i = 0; i < num_agents; ++i) {
                     if (!cspaces[i].isValidPath(joint_path[t-1][i], joint_path[t][i])) {
-                        std::cout << "[PATH VALIDATION] Agent " << i << " edge collision from step " << (t-1) << " to " << t << std::endl;
+                        //std::cout << "[PATH VALIDATION] Agent " << i << " edge collision from step " << (t-1) << " to " << t << std::endl;
                         path_valid = false;
                     }
                 }
@@ -330,16 +324,15 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
         // Check each agent for obstacle collision
         for (size_t i = 0; i < num_agents; ++i) {
             if (cspaces[i].inCollision(config[i].x(), config[i].y())) {
-                std::cout << "[JOINT RRT] Agent " << i << " in collision with obstacle at " << config[i].transpose() << std::endl;
                 return false;
             }
         }
-        // Check for inter-agent collisions (distance < sum of radii)
+        // Check for inter-agent collisions (distance < sum of radii + buffer)
+        double buffer = 0.4;
         for (size_t i = 0; i < num_agents; ++i) {
             for (size_t j = i+1; j < num_agents; ++j) {
-                double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius;
+                double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius + buffer;
                 if ((config[i] - config[j]).norm() < min_dist) {
-                    std::cout << "[JOINT RRT] Agents " << i << " and " << j << " in collision: dist=" << (config[i] - config[j]).norm() << " < " << min_dist << std::endl;
                     return false;
                 }
             }
@@ -355,15 +348,42 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
 
     int goal_idx = -1;
     for (int iter = 0; iter < max_iterations; ++iter) {
-        // Sample joint config
+        // Sample joint config with bias to keep agents apart
         JointConfig q_rand(num_agents);
         if (uniform(gen) < goal_bias) {
             q_rand = q_goal;
         } else {
+            bool valid_sample = true;
             for (size_t i = 0; i < num_agents; ++i) {
                 q_rand[i].x() = x_dists[i](gen);
                 q_rand[i].y() = y_dists[i](gen);
             }
+            // Bias: if any pair is too close, sample them away from each other
+            for (size_t i = 0; i < num_agents; ++i) {
+                for (size_t j = i+1; j < num_agents; ++j) {
+                    double dist = (q_rand[i] - q_rand[j]).norm();
+                    double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius + 0.2;
+                    if (dist < min_dist) {
+                        valid_sample = false;
+                        break;
+                    }
+                    // Early avoidance: if within 5 units, sample away
+                    if (dist < 9.0) {
+                        Eigen::Vector2d diff = q_rand[i] - q_rand[j];
+                        if (diff.norm() > 1e-6) {
+                            Eigen::Vector2d ortho_cw(-diff.y(), diff.x());
+                            ortho_cw.normalize();
+                            Eigen::Vector2d ortho_ccw(diff.y(), -diff.x());
+                            ortho_ccw.normalize();
+                            double bias_dist = 1.0;
+                            q_rand[i] += ortho_cw * bias_dist;
+                            q_rand[j] += ortho_ccw * bias_dist;
+                        }
+                    }
+                }
+                if (!valid_sample) break;
+            }
+            if (!valid_sample) continue;
         }
         // Find nearest node in tree
         int nearest_idx = 0;
@@ -382,13 +402,32 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
         }
         // Check new joint config for obstacle and inter-agent collisions
         if (!is_valid_joint(q_new)) continue;
-        // Check edge (motion) validity for each agent
+        // Stricter edge checking: interpolate between start and end for all robots
         bool edge_valid = true;
-        for (size_t i = 0; i < num_agents; ++i) {
-            if (!cspaces[i].isValidPath(tree[nearest_idx].config[i], q_new[i])) {
-                std::cout << "[JOINT RRT] Agent " << i << " edge collision from " << tree[nearest_idx].config[i].transpose() << " to " << q_new[i].transpose() << std::endl;
-                edge_valid = false; break;
+        int interp_steps = 10;
+        for (int step = 0; step <= interp_steps; ++step) {
+            double alpha = double(step) / interp_steps;
+            std::vector<Eigen::Vector2d> interp_config(num_agents);
+            for (size_t i = 0; i < num_agents; ++i) {
+                interp_config[i] = tree[nearest_idx].config[i] * (1.0 - alpha) + q_new[i] * alpha;
             }
+            // Check for obstacle and inter-agent collisions at this interpolated step
+            for (size_t i = 0; i < num_agents; ++i) {
+                if (cspaces[i].inCollision(interp_config[i].x(), interp_config[i].y())) {
+                    edge_valid = false;
+                    break;
+                }
+                for (size_t j = 0; j < num_agents; ++j) {
+                    if (i == j) continue;
+                    double min_dist = problem.agent_properties[i].radius + problem.agent_properties[j].radius + 0.2;
+                    if ((interp_config[i] - interp_config[j]).norm() < min_dist) {
+                        edge_valid = false;
+                        break;
+                    }
+                }
+                if (!edge_valid) break;
+            }
+            if (!edge_valid) break;
         }
         if (!edge_valid) continue;
         // Add to tree
@@ -457,7 +496,7 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
         for (const auto& p : planned_paths) max_other_len = std::max(max_other_len, p.waypoints.size());
         size_t max_steps = std::max(agent_path.waypoints.size(), max_other_len);
         Eigen::Vector2d last_pos = agent.q_init;
-    const size_t max_time_steps = 1000;
+    const size_t max_time_steps = 10000;
     const size_t max_wait_steps = 50; // max consecutive waits before replanning
     size_t time_steps = 0;
     size_t wait_steps = 0;
