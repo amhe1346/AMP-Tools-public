@@ -4,6 +4,11 @@
 #include "hw/HW2.h"
 #include "MyKinoRRT.h"
 
+// Quick access to all shared folder implementations
+#include "../shared/SharedAll.h"
+// OR use the focused version:
+// #include "../shared/MyAlgorithms.h"
+
 using namespace amp;
 
 // Load problems and map agent for quick testing
@@ -22,8 +27,8 @@ int main(int argc, char** argv) {
     MyKinoRRT kino_planner;
     KinoPath path = kino_planner.plan(prob, *agentFactory[prob.agent_type]());
     HW9::check(path, prob);
-    if (path.valid)
-        Visualizer::makeFigure(prob, path, false); // Set to 'true' to render animation
+    
+    Visualizer::makeFigure(prob, path,true); // Set to 'true' to render animation
     Visualizer::saveFigures();
     HW9::grade<MyKinoRRT, MySingleIntegrator, MyFirstOrderUnicycle, MySecondOrderUnicycle, MySimpleCar>("firstName.lastName@colorado.edu", argc, argv, std::make_tuple(), std::make_tuple(), std::make_tuple(), std::make_tuple(), std::make_tuple());
     return 0;
